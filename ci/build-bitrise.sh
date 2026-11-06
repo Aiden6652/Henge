@@ -2,6 +2,7 @@
 # Build Henge's unsigned, ad-hoc-signed IPA on a Bitrise macOS/Xcode stack.
 # SideStore or AltStore re-signs the IPA when installing it on the iPad.
 set -euo pipefail
+export HOMEBREW_NO_AUTO_UPDATE=1
 
 HENGE_ROOT="${BITRISE_SOURCE_DIR:?Bitrise must set BITRISE_SOURCE_DIR}"
 HUSK_ROOT="$(dirname "$HENGE_ROOT")/Husk"
@@ -16,10 +17,11 @@ if ((${#missing[@]})); then
 fi
 
 if ! command -v rustup >/dev/null 2>&1; then
-    brew install rustup-init
-    rustup-init -y --no-modify-path
+    brew install rustup
+    export PATH="$(brew --prefix rustup)/bin:$PATH"
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
+rustup default stable
 rustup target add aarch64-apple-ios
 
 git clone --depth 1 https://github.com/Leviidev/Husk.git "$HUSK_ROOT"
