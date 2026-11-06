@@ -30,6 +30,7 @@ targets:
           - "Resources/**"
           - "Info.plist"
           - "Henge.entitlements"
+          - "Henge.personal.entitlements"
           - "AppIcon.icon/**"
           - "AppIcon.icon"
       - path: Henge/Resources
