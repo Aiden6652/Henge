@@ -20,6 +20,8 @@ struct SessionView: View {
     @AppStorage("henge.matchScreenColors") private var matchScreenColors = true
     @AppStorage("henge.display.brightness") private var screenBrightness = 1.0
     @AppStorage("henge.display.linearToSRGB") private var linearColorConversion = true
+    @AppStorage("henge.cursor.scale") private var cursorScale = Device.isPad ? 1 : 3
+    @AppStorage("henge.cursor.sharp") private var sharpCursor = true
 
     @State private var typing = false
     @State private var zoomed = false
@@ -373,6 +375,17 @@ struct SessionView: View {
                     LabeledContent("Brightness", value: "\(Int(screenBrightness * 100))%")
                     Slider(value: $screenBrightness, in: 0.4...1)
                     Text("Compare linear conversion on and off if colors look washed out. Brightness dims only the Mac's screen.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
+                Section("Pointer") {
+                    Picker("Size", selection: $cursorScale) {
+                        Text("1×").tag(1)
+                        Text("2×").tag(2)
+                        Text("3×").tag(3)
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Sharp edges", isOn: $sharpCursor)
+                    Text("The Mac supplies a small pointer image. Enlarging it can look blurry; 1× is the sharpest on an iPad.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Sharing") {

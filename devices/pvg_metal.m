@@ -20,13 +20,16 @@
 /* 1080p shrunk onto a phone would make a normal pointer a few dots across; an iPad's screen needs less. */
 static int cursor_scale(void) {
 #if TARGET_OS_IPHONE
-    static int scale;
-    if (!scale) {
+    NSInteger saved = [[NSUserDefaults standardUserDefaults] integerForKey:@"henge.cursor.scale"];
+    if (saved >= 1 && saved <= 3) return (int)saved;
+    static int defaultScale;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
         struct utsname u;
         uname(&u);
-        scale = strncmp(u.machine, "iPad", 4) ? 3 : 2;
-    }
-    return scale;
+        defaultScale = strncmp(u.machine, "iPad", 4) ? 3 : 1;
+    });
+    return defaultScale;
 #else
     return 1;
 #endif
@@ -148,7 +151,7 @@ enum { OBJ_BUFFER = 1, OBJ_TEXTURE = 2, OBJ_FUNCTION = 6, OBJ_SERIALIZED = 7, OB
     CAMetalLayer *layer;
     id<MTLRenderPipelineState> screen_pipe, linear_pipe, cursor_pipe;
     id<MTLTexture> cursor_tex;
-    id<MTLSamplerState> screen_sampler;
+    id<MTLSamplerState> screen_sampler, cursor_sampler;
     uint64_t on_screen; /* the mapping showing */
     uint64_t gpu_frames;
     dispatch_queue_t presenter;
@@ -1830,7 +1833,12 @@ static NSString *const screen_shaders = @"#include <metal_stdlib>\n"
     MTLSamplerDescriptor *sd = [MTLSamplerDescriptor new];
     sd.minFilter = sd.magFilter = MTLSamplerMinMagFilterLinear;
     screen_sampler = [device newSamplerStateWithDescriptor:sd];
-    if (!screen_pipe || !linear_pipe || !cursor_pipe) { [self complain:[NSString stringWithFormat:@"screen pipelines: %@", err.localizedDescription]]; return NO; }
+    sd.minFilter = sd.magFilter = MTLSamplerMinMagFilterNearest;
+    cursor_sampler = [device newSamplerStateWithDescriptor:sd];
+    if (!screen_pipe || !linear_pipe || !cursor_pipe || !screen_sampler || !cursor_sampler) {
+        [self complain:[NSString stringWithFormat:@"screen pipelines: %@", err.localizedDescription]];
+        return NO;
+    }
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
     layer.device = device;
@@ -1951,6 +1959,8 @@ static NSString *const screen_shaders = @"#include <metal_stdlib>\n"
             [e setRenderPipelineState:cursor_pipe];
             [e setVertexBytes:r length:sizeof r atIndex:0];
             [e setFragmentTexture:ctex atIndex:0];
+            NSNumber *sharpSetting = [[NSUserDefaults standardUserDefaults] objectForKey:@"henge.cursor.sharp"];
+            [e setFragmentSamplerState:sharpSetting && !sharpSetting.boolValue ? screen_sampler : cursor_sampler atIndex:0];
             [e drawPrimitives:MTLPrimitiveTypeTriangleStrip vertexStart:0 vertexCount:4];
         }
         [e endEncoding];
