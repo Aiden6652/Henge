@@ -1857,6 +1857,8 @@ static NSString *const screen_shaders = @"#include <metal_stdlib>\n"
     if (!surface) { [self complain:[NSString stringWithFormat:@"swap to unknown surface %llu", mapping]]; return; }
     on_screen = mapping;
     BOOL half = surface->fourcc == 'RGhA';
+    if (!screen_tex) fprintf(stderr, "hengevm: display scanout format %s (%ux%u)\n",
+                             half ? "RGBA16Float" : "BGRA8Unorm", surface->surface_w, surface->surface_h);
     if (!surface->scanout) {
         MTLTextureDescriptor *t = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:half ? MTLPixelFormatRGBA16Float : MTLPixelFormatBGRA8Unorm
                                                                                      width:surface->surface_w height:surface->surface_h mipmapped:NO];
@@ -1931,7 +1933,9 @@ static NSString *const screen_shaders = @"#include <metal_stdlib>\n"
         pass.colorAttachments[0].loadAction = MTLLoadActionDontCare;
         pass.colorAttachments[0].storeAction = MTLStoreActionStore;
         id<MTLRenderCommandEncoder> e = [cb renderCommandEncoderWithDescriptor:pass];
-        [e setRenderPipelineState:half ? linear_pipe : screen_pipe];
+        NSNumber *linearSetting = [[NSUserDefaults standardUserDefaults] objectForKey:@"henge.display.linearToSRGB"];
+        BOOL convertLinear = linearSetting ? linearSetting.boolValue : YES;
+        [e setRenderPipelineState:(half && convertLinear) ? linear_pipe : screen_pipe];
         float rect[4] = {-1, -1, 2, 2};
         [e setVertexBytes:rect length:sizeof rect atIndex:0];
         [e setFragmentTexture:tex atIndex:0];

@@ -18,6 +18,8 @@ struct SessionView: View {
     @State private var started = Date()
     @AppStorage("henge.cpus") private var cpus = 4
     @AppStorage("henge.matchScreenColors") private var matchScreenColors = true
+    @AppStorage("henge.display.brightness") private var screenBrightness = 1.0
+    @AppStorage("henge.display.linearToSRGB") private var linearColorConversion = true
 
     @State private var typing = false
     @State private var zoomed = false
@@ -367,7 +369,10 @@ struct SessionView: View {
                 }
                 Section("Display") {
                     Toggle("Color matching", isOn: $matchScreenColors)
-                    Text("Match the Mac's sRGB colors to this device's display. Turn this off to compare with the previous appearance.")
+                    Toggle("Linear color conversion", isOn: $linearColorConversion)
+                    LabeledContent("Brightness", value: "\(Int(screenBrightness * 100))%")
+                    Slider(value: $screenBrightness, in: 0.4...1)
+                    Text("Compare linear conversion on and off if colors look washed out. Brightness dims only the Mac's screen.")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Sharing") {
