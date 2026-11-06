@@ -20,4 +20,6 @@ workflows:
                 #!/usr/bin/env bash
                 set -euo pipefail
                 bash ci/build-bitrise.sh
-      - deploy-to-bitrise-io@2: {}
+      - deploy-to-bitrise-io@2:
+          inputs:
+            - is_enable_public_page: 'false'

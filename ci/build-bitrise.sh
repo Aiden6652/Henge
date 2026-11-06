@@ -52,4 +52,8 @@ mkdir -p "$HOME/Desktop"
 ./ios/scripts/package_ipa.sh
 
 mkdir -p "${BITRISE_DEPLOY_DIR:?Bitrise must set BITRISE_DEPLOY_DIR}"
-cp "$HOME/Desktop/Henge.ipa" "$BITRISE_DEPLOY_DIR/Henge-color-fix.ipa"
+# The IPA is intentionally ad-hoc-signed, without embedded.mobileprovision.
+# Bitrise's deploy step treats an .ipa as an installable artifact and rejects it
+# without a provisioning profile. Wrap it so it is uploaded as a generic file;
+# users extract the IPA and let SideStore or AltStore re-sign it.
+( cd "$HOME/Desktop" && zip -0 -q "$BITRISE_DEPLOY_DIR/Henge-color-fix-unsigned.zip" Henge.ipa )
