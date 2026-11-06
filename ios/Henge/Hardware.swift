@@ -119,6 +119,7 @@ final class HardwareMouse {
     static let shared = HardwareMouse()
     static let speedKey = "henge.mouse.speed"
     static let reverseKey = "henge.mouse.reverse"
+    static let scrollSpeedKey = "henge.mouse.scrollSpeed"
 
     private var observers: [NSObjectProtocol] = []
     private var mice: [GCMouse] = []
@@ -127,11 +128,14 @@ final class HardwareMouse {
     private var speed: Float = 1
     private var reverse = false
     private var scrollsLogged = 0 // the first few, to see what a device's raw values look like
+    private var lastScrollFirst: Float = 0, lastScrollSecond: Float = 0
 
     func start() {
         let defaults = UserDefaults.standard
         speed = defaults.object(forKey: Self.speedKey) == nil ? 1 : Float(defaults.double(forKey: Self.speedKey))
         reverse = defaults.bool(forKey: Self.reverseKey)
+        lastScrollFirst = 0
+        lastScrollSecond = 0
         GCMouse.mice().forEach(attach)
         observers.append(NotificationCenter.default.addObserver(forName: .GCMouseDidConnect, object: nil, queue: .main) { [weak self] note in
             if let mouse = note.object as? GCMouse { self?.attach(mouse) }
@@ -201,20 +205,38 @@ final class HardwareMouse {
         }
     }
 
-    /// GameController puts the wheel's vertical motion on the pad's first axis, negative going up, and
-    /// its horizontal motion on the second. macOS accelerates the wheel by about the square of what it
-    /// is sent (see Trackpad's scroll), so this sends the root: one notch, a value of 1, is about 40 pixels.
+    /// GameController puts vertical motion on the first axis and horizontal on the second.
+    /// macOS accelerates wheel units roughly quadratically, so use a tunable square root
+    /// and cap each event to keep a small pad gesture from jumping across a page.
     private func scrolled(_ first: Float, _ second: Float) {
+        // GameController reports both axis states when either one changes. On a
+        // Magic Keyboard it calls us twice per movement, with one stale axis in
+        // each call; sending both values doubles the scroll and adds sideways drift.
+        let verticalChanged = first != lastScrollFirst
+        let horizontalChanged = second != lastScrollSecond
+        lastScrollFirst = first
+        lastScrollSecond = second
+        let mostlyVertical = abs(first) > 2 * abs(second)
+        let mostlyHorizontal = abs(second) > 2 * abs(first)
+        let verticalRaw = verticalChanged && !mostlyHorizontal ? -first : 0
+        let horizontalRaw = horizontalChanged && !mostlyVertical ? second : 0
+        let defaults = UserDefaults.standard
+        let configured = defaults.object(forKey: Self.scrollSpeedKey) == nil
+            ? 0.3 : defaults.double(forKey: Self.scrollSpeedKey)
+        let scale = Float(configured.isFinite ? min(max(configured, 0.1), 1.5) : 0.3)
+        let way: Int32 = reverse ? -1 : 1
+        let horizontal = way * Self.wheelUnits(horizontalRaw, scale: scale)
+        let vertical = way * Self.wheelUnits(verticalRaw, scale: scale)
         if scrollsLogged < 24 {
             scrollsLogged += 1
-            HengeLog.log("input", "scroll raw: \(first), \(second)")
+            HengeLog.log("input", "scroll raw: \(first), \(second); units: \(horizontal), \(vertical)")
         }
-        let way: Int32 = reverse ? -1 : 1
-        henge_vm_mouse_scroll(way * Self.wheelUnits(second), way * Self.wheelUnits(-first))
+        if horizontal != 0 || vertical != 0 { henge_vm_mouse_scroll(horizontal, vertical) }
     }
 
-    private static func wheelUnits(_ value: Float) -> Int32 {
-        let units = Int32((22 * abs(value).squareRoot()).rounded())
+    private static func wheelUnits(_ value: Float, scale: Float) -> Int32 {
+        guard value.isFinite else { return 0 }
+        let units = Int32(min(32, (22 * scale * abs(value).squareRoot()).rounded()))
         return value < 0 ? -units : units
     }
 }
