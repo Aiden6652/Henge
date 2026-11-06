@@ -603,10 +603,10 @@ static IOSurfaceRef make_iosurface(HvObject *to, const uint8_t *desc, uint64_t a
         static int logged;
         if (planes >= 2 && logged++ < 4)
             for (uint32_t i = 0; i < planes && i < IOSurfaceGetPlaneCount(made) && i < 4; i++)
-                fprintf(stderr, "hengevm: video plane %u guest off %llu row %llu h %llu; host off %zu row %zu h %zu\n",
+                fprintf(stderr, "hengevm: video plane %u guest off %llu row %llu h %llu; host row %zu h %zu\n",
                         i, (unsigned long long)to->plane_from[i], (unsigned long long)to->plane_row[i],
-                        (unsigned long long)to->plane_h[i], IOSurfaceGetOffsetOfPlane(made, i),
-                        IOSurfaceGetBytesPerRowOfPlane(made, i), IOSurfaceGetHeightOfPlane(made, i));
+                        (unsigned long long)to->plane_h[i], IOSurfaceGetBytesPerRowOfPlane(made, i),
+                        IOSurfaceGetHeightOfPlane(made, i));
     }
     return made;
 }
