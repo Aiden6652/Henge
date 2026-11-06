@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Builds Henge for iOS and writes ~/Desktop/Henge.ipa (or ~/Desktop/Henge.tipa with --trollstore).
-# Unsigned build, then signed ad hoc inside out with Henge.entitlements, as Husk's
+# Unsigned build, then signed ad hoc inside out with the entitlements file named by the
+# HENGE_ENTITLEMENTS environment variable (default Henge/Henge.entitlements), as Husk's
 # package_ipa.sh does: the sideloader (SideStore, AltStore, Impactor) re-signs it
 # with the user's own certificate and keeps the entitlements it can.
 # --trollstore strips the entitlements TrollStore bans under PPL/TXM.

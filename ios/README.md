@@ -5,9 +5,12 @@ The Henge app on HengeVM's engine. Build: `ios/scripts/package_ipa.sh` (writes
 TrollStore Lite, without the entitlements TrollStore bans). Needs Xcode 27 or later, xcodegen,
 and the prebuilt pieces
 `ios/scripts/fetch_deps.sh` copies from Husk (StikJIT, the pairing library,
-libslirp and glib for iOS). `HENGE_ENTITLEMENTS` (in `project.yml`, read by both
-xcodebuild and `package_ipa.sh`) picks the app's entitlements file; a free
-personal team signs with `HENGE_ENTITLEMENTS=Henge/Henge.personal.entitlements`.
+libslirp and glib for iOS). `HENGE_ENTITLEMENTS` picks the app's entitlements file
+(default `Henge/Henge.entitlements`). A free personal team uses
+`Henge/Henge.personal.entitlements`: pass it to xcodebuild as a build setting
+(`xcodebuild ... HENGE_ENTITLEMENTS=Henge/Henge.personal.entitlements`, since
+`project.yml` sets it and an environment variable does not override that), and to
+the packager as an environment variable (`HENGE_ENTITLEMENTS=... ios/scripts/package_ipa.sh`).
 
 - **JIT**: on iOS 26+ (TXM) only an attached debugger can grant executable
   memory. Henge uses the same machinery as Husk: StikDebug, TrollStore, a
