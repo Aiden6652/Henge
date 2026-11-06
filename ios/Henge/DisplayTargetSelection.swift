@@ -31,11 +31,4 @@ struct DisplayTargetSelection {
     mutating func disconnect(_ id: UUID) {
         targets.removeAll { $0.id == id }
     }
-
-    /// Drops every surface of one role; returns their ids.
-    mutating func disconnectAll(_ role: Role) -> [UUID] {
-        let gone = targets.filter { $0.role == role }.map(\.id)
-        targets.removeAll { $0.role == role }
-        return gone
-    }
 }

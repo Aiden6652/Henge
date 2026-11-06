@@ -171,8 +171,13 @@ $(B)/test_display_router: ios/Henge/DisplayRouter.swift ios/Henge/DisplayTargetS
 $(B)/test_external_screen_plan: ios/Henge/ExternalScreenPlan.swift tests/test_external_screen_plan.swift | $(B)
 	xcrun --sdk macosx swiftc $^ -o $@
 
-test-display-routing: $(B)/test_display_targets $(B)/test_display_router $(B)/test_external_screen_plan
+# The glue: fake screens and a real router, to check what each screen is told and what the engine draws.
+$(B)/test_legacy_external_display: ios/Henge/LegacyExternalDisplay.swift ios/Henge/ExternalScreenPlan.swift ios/Henge/MacPresentation.swift ios/Henge/DisplayRouter.swift ios/Henge/DisplayTargetSelection.swift tests/test_legacy_external_display.swift tests/display_engine_stub.h | $(B)
+	xcrun --sdk macosx swiftc -import-objc-header tests/display_engine_stub.h $(filter %.swift,$^) -o $@
+
+test-display-routing: $(B)/test_display_targets $(B)/test_display_router $(B)/test_external_screen_plan $(B)/test_legacy_external_display
 	$(B)/test_display_targets
 	$(B)/test_display_router
 	$(B)/test_external_screen_plan
+	$(B)/test_legacy_external_display
 .PHONY: test-display-routing

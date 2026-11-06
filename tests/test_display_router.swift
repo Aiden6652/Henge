@@ -19,14 +19,19 @@ struct DisplayRouterTests {
         router.connect(monitor, layer: monitorLayer, role: .external)
         precondition(engineShows(monitorLayer) && router.isExternal)
 
-        // Unplugging the monitor: iOS may never tear down the view that held its layer, so the
-        // display scene releases it, and the phone gets the Mac back at once.
-        router.releaseExternal()
-        precondition(engineShows(phoneLayer) && !router.isExternal)
+        // Two monitors (USB-C and AirPlay): the later one shows the Mac. Disconnecting one
+        // monitor's surface leaves the other showing it, not the phone.
+        let airPlayLayer = CAMetalLayer(), airPlay = UUID()
+        router.connect(airPlay, layer: airPlayLayer, role: .external)
+        precondition(engineShows(airPlayLayer))
+        router.disconnect(airPlay)
+        precondition(engineShows(monitorLayer) && router.isExternal)
 
-        // The view's own late detach afterwards changes nothing.
+        // The last monitor going gives the Mac back to the phone, and a late repeat changes nothing.
         router.disconnect(monitor)
         precondition(engineShows(phoneLayer) && !router.isExternal)
-        print("Display router: all unplug checks passed")
+        router.disconnect(monitor)
+        precondition(engineShows(phoneLayer) && !router.isExternal)
+        print("Display router: all checks passed")
     }
 }

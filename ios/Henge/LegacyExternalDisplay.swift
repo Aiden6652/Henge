@@ -1,5 +1,14 @@
-import SwiftUI
-import UIKit
+import Foundation
+
+/// One external display as LegacyExternalDisplay drives it: ExternalDisplaySceneDelegate in the
+/// app, a fake in tests.
+@MainActor
+protocol ExternalScreen: AnyObject {
+    /// The id this screen's view connects to DisplayRouter under.
+    var surface: UUID { get }
+    func showMac(_ presentation: MacPresentation)
+    func stopMac()
+}
 
 /// Before iOS 27, a connected display (USB-C cable or AirPlay) arrives as a
 /// `windowExternalDisplayNonInteractive` scene offered to the app delegate (HengeAppDelegate).
@@ -10,88 +19,44 @@ import UIKit
 final class LegacyExternalDisplay {
     static let shared = LegacyExternalDisplay()
 
-    /// Whether iOS offers external display scenes to the app delegate.
+    /// Whether the app delegate may take external display scenes: not from iOS 27, where that scene is the accessory's.
     nonisolated static var offeredToAppDelegate: Bool {
         if #available(iOS 27.0, *) { return false } else { return true }
     }
 
-    private var plan = ExternalScreenPlan<ObjectIdentifier, MacPresentation>()
-    private var presentation: MacPresentation?
-    private var scenes: [ObjectIdentifier: ExternalDisplaySceneDelegate] = [:]
+    private var plan = ExternalScreenPlan<MacPresentation>()
+    private var screens: [UUID: ExternalScreen] = [:]
 
     /// A session appeared: its Mac goes to every connected display.
     func begin(_ presentation: MacPresentation) {
-        self.presentation = presentation
         apply(plan.begin(presentation))
     }
 
     /// A session went away: its displays go back to mirroring.
     func end(_ presentation: MacPresentation) {
         apply(plan.end(presentation))
-        if self.presentation == presentation { self.presentation = nil }
     }
 
-    fileprivate func connected(_ scene: ExternalDisplaySceneDelegate) {
-        scenes[ObjectIdentifier(scene)] = scene
-        apply(plan.connect(ObjectIdentifier(scene)))
+    func connect(_ screen: ExternalScreen) {
+        screens[screen.surface] = screen
+        apply(plan.connect(screen.surface))
     }
 
-    fileprivate func disconnected(_ scene: ExternalDisplaySceneDelegate) {
-        apply(plan.disconnect(ObjectIdentifier(scene)))
-        scenes.removeValue(forKey: ObjectIdentifier(scene))
+    func disconnect(_ screen: ExternalScreen) {
+        apply(plan.disconnect(screen.surface))
+        screens.removeValue(forKey: screen.surface)
     }
 
-    private func apply(_ changes: [ExternalScreenPlan<ObjectIdentifier, MacPresentation>.Change]) {
+    private func apply(_ changes: [ExternalScreenPlan<MacPresentation>.Change]) {
         for change in changes {
             switch change {
-            case .showMac(let id):
-                if let presentation { scenes[id]?.showMac(presentation) }
-            case .stopMac(let id):
-                scenes[id]?.stopMac()
-                // The external view's own detach may never come once its window is gone.
-                presentation?.display.releaseExternal()
+            case .showMac(let surface, let presentation):
+                screens[surface]?.showMac(presentation)
+            case .stopMac(let surface, let presentation):
+                screens[surface]?.stopMac()
+                // The surface's own detach may never come once its window is gone.
+                presentation.release(surface)
             }
         }
-    }
-}
-
-/// One external display scene (UIResponder makes it main-actor).
-final class ExternalDisplaySceneDelegate: UIResponder, UIWindowSceneDelegate {
-    var window: UIWindow?
-    private var windowScene: UIWindowScene?
-
-    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
-        guard let scene = scene as? UIWindowScene else { return }
-        windowScene = scene
-        let mode = scene.screen.currentMode
-        HengeLog.log("display", "external display connected: \(Int(scene.screen.nativeBounds.width))x\(Int(scene.screen.nativeBounds.height)) px, "
-                   + "mode \(mode.map { "\(Int($0.size.width))x\(Int($0.size.height))" } ?? "unknown"), "
-                   + "scale \(scene.screen.nativeScale), \(scene.screen.maximumFramesPerSecond) Hz")
-        LegacyExternalDisplay.shared.connected(self)
-    }
-
-    func sceneDidDisconnect(_ scene: UIScene) {
-        HengeLog.log("display", "external display disconnected")
-        LegacyExternalDisplay.shared.disconnected(self)
-        windowScene = nil
-    }
-
-    fileprivate func showMac(_ presentation: MacPresentation) {
-        guard let windowScene else { return }
-        let window = self.window ?? UIWindow(windowScene: windowScene)
-        window.backgroundColor = .black
-        window.rootViewController = UIHostingController(rootView: ExternalMacDisplay(presentation: presentation))
-        window.isHidden = false
-        self.window = window
-        HengeLog.log("display", "the Mac is on the external display")
-    }
-
-    /// Takes the Mac off this display: no window of ours, so iOS mirrors the phone (or the display is gone).
-    fileprivate func stopMac() {
-        guard let window else { return }
-        window.rootViewController = nil // lets SwiftUI take the screen view down, which detaches its layer
-        window.isHidden = true
-        self.window = nil
-        HengeLog.log("display", "the Mac left the external display")
     }
 }
