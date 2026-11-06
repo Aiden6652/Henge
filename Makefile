@@ -181,3 +181,11 @@ test-display-routing: $(B)/test_display_targets $(B)/test_display_router $(B)/te
 	$(B)/test_external_screen_plan
 	$(B)/test_legacy_external_display
 .PHONY: test-display-routing
+
+# What the JIT setup tells the user and when it retries by itself, for each kind of network path and helper error.
+$(B)/test_jit_advice: ios/Henge/JIT/JITNetworkAdvice.swift tests/test_jit_advice.swift | $(B)
+	xcrun --sdk macosx swiftc $^ -o $@
+
+test-jit-advice: $(B)/test_jit_advice
+	$(B)/test_jit_advice
+.PHONY: test-jit-advice
