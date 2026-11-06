@@ -163,6 +163,16 @@ restore-objs: $(RESTORE_OBJ)
 $(B)/test_display_targets: ios/Henge/DisplayTargetSelection.swift tests/test_display_targets.swift | $(B)
 	xcrun --sdk macosx swiftc $^ -o $@
 
-test-display-routing: $(B)/test_display_targets
+# The router's hand-off to the engine, with the engine call recorded instead of made.
+$(B)/test_display_router: ios/Henge/DisplayRouter.swift ios/Henge/DisplayTargetSelection.swift tests/test_display_router.swift tests/display_engine_stub.h | $(B)
+	xcrun --sdk macosx swiftc -import-objc-header tests/display_engine_stub.h $(filter %.swift,$^) -o $@
+
+# Which external screen shows the Mac before iOS 27, for any order of session and plug events.
+$(B)/test_external_screen_plan: ios/Henge/ExternalScreenPlan.swift tests/test_external_screen_plan.swift | $(B)
+	xcrun --sdk macosx swiftc $^ -o $@
+
+test-display-routing: $(B)/test_display_targets $(B)/test_display_router $(B)/test_external_screen_plan
 	$(B)/test_display_targets
+	$(B)/test_display_router
+	$(B)/test_external_screen_plan
 .PHONY: test-display-routing

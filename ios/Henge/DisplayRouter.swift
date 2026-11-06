@@ -23,6 +23,14 @@ final class DisplayRouter: ObservableObject {
         layers.removeValue(forKey: id)
     }
 
+    /// The external display went away. The view that held its layer may never detach
+    /// itself, so drop every external surface now and give the Mac back to the phone.
+    func releaseExternal() {
+        let gone = targets.disconnectAll(.external)
+        updateTarget()
+        gone.forEach { layers.removeValue(forKey: $0) }
+    }
+
     /// Re-present the latest frame after layout or a return from the background,
     /// even when macOS is idle and isn't submitting another frame.
     func refresh(_ id: UUID? = nil) {
