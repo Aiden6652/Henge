@@ -20,8 +20,9 @@ struct ExternalMacDisplay: View {
     }
 }
 
-/// Keep iOS 17–26's existing mirroring behavior. iOS 27 delivers a separate
-/// noninteractive display scene only when the app registers this accessory.
+/// iOS 27 delivers a separate noninteractive display scene only when the app
+/// registers this accessory. iOS 17–26 offer that scene to the app delegate
+/// instead (LegacyExternalDisplay), which this tells about the session.
 struct ExternalMacDisplayModifier: ViewModifier {
     let display: DisplayRouter
     let aspect: CGFloat
@@ -36,6 +37,8 @@ struct ExternalMacDisplayModifier: ViewModifier {
             }
         } else {
             content
+                .onAppear { LegacyExternalDisplay.shared.begin(display, aspect: aspect) }
+                .onDisappear { LegacyExternalDisplay.shared.end(display) }
         }
     }
 }
