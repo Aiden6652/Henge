@@ -69,6 +69,14 @@ private struct GPUScreen: UIViewRepresentable {
         view.isOpaque = false
         view.layer.contentsGravity = .resizeAspect
         view.layer.isOpaque = false
+        if ProcessInfo.processInfo.environment["HV_COLOR_PROBE"] != nil {
+            // What the screen itself is, for the colour probe (the engine logs the layer and the frames).
+            let s = UIScreen.main
+            let gamut = s.traitCollection.displayGamut == .P3 ? "P3" : s.traitCollection.displayGamut == .SRGB ? "sRGB" : "unspecified"
+            HengeLog.log("colorprobe", "colorprobe: v=1 src=swift event=screen gamut=\(gamut) scale=\(s.scale) nativeScale=\(s.nativeScale) "
+                       + "bounds=\(Int(s.bounds.width))x\(Int(s.bounds.height)) maxEDR=\(s.potentialEDRHeadroom) currentEDR=\(s.currentEDRHeadroom) "
+                       + "brightness=\(String(format: "%.2f", s.brightness)) refreshHz=\(s.maximumFramesPerSecond)")
+        }
         henge_vm_set_display_layer(Unmanaged.passUnretained(view.layer).toOpaque())
         return view
     }

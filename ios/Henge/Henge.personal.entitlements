@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- For a free personal Apple Developer team. Xcode cannot sign extended
+	     virtual addressing or dynamic-codesigning with a personal team, but it
+	     can sign the two below (verified on team D3FQAZQRVV, 2026-11-06).
+	     get-task-allow: lets Henge's built-in StikJIT helper attach a debugger
+	     and give the app executable memory on iOS 26.
+	     increased-memory-limit: raises the app's memory limit (3.54 GB -> more).
+	     Select with: xcodebuild ... HENGE_ENTITLEMENTS=Henge/Henge.personal.entitlements
+	     (HENGE_ENTITLEMENTS only applies to the app; the JIT helper takes none.) -->
+	<key>get-task-allow</key>
+	<true/>
+	<key>com.apple.developer.kernel.increased-memory-limit</key>
+	<true/>
+</dict>
+</plist>
