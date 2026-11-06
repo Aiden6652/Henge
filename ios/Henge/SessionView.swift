@@ -17,6 +17,7 @@ struct SessionView: View {
     @State private var log: [String] = []
     @State private var started = Date()
     @AppStorage("henge.cpus") private var cpus = 4
+    @AppStorage("henge.matchScreenColors") private var matchScreenColors = true
 
     @State private var typing = false
     @State private var zoomed = false
@@ -357,6 +358,11 @@ struct SessionView: View {
                     LabeledContent("Translated blocks", value: String(format: "%.1f M/s", blocksPerSecond / 1e6))
                     LabeledContent("Network frames", value: "\(framesOut) out, \(framesIn) in")
                     LabeledContent("Up", value: "\(Int(Date().timeIntervalSince(started))) s")
+                }
+                Section("Display") {
+                    Toggle("Color matching", isOn: $matchScreenColors)
+                    Text("Match the Mac's sRGB colors to this device's display. Turn this off to compare with the previous appearance.")
+                        .font(.footnote).foregroundStyle(.secondary)
                 }
                 Section("Sharing") {
                     LabeledContent("Clipboard and folder", value: helperRunning ? "On" : "Not set up")

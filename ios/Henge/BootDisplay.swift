@@ -1,5 +1,6 @@
 import SwiftUI
 import QuartzCore
+import CoreGraphics
 
 /// The Mac's screen, refreshed a few times a second: what its GPU draws once
 /// macOS is up. Before that, the boot framebuffer, which only ever holds the
@@ -8,6 +9,7 @@ import QuartzCore
 struct BootDisplay: View {
     @State private var image: CGImage?
     @State private var gpuLive = false
+    @AppStorage("henge.matchScreenColors") private var matchScreenColors = true
 
     var body: some View {
         ZStack {
@@ -26,7 +28,7 @@ struct BootDisplay: View {
                         .foregroundStyle(.white)
                 }
             }
-            GPUScreen().allowsHitTesting(false)
+            GPUScreen(matchScreenColors: matchScreenColors).allowsHitTesting(false)
         }
         .task {
             // Once macOS draws with the GPU the frames go straight to GPUScreen:
@@ -59,8 +61,18 @@ struct BootDisplay: View {
 
 /// A layer the engine draws the Mac's frames into, with the GPU, without the main thread.
 private struct GPUScreen: UIViewRepresentable {
+    let matchScreenColors: Bool
+    private static let srgb = CGColorSpace(name: CGColorSpace.sRGB)
+
     final class Screen: UIView {
         override class var layerClass: AnyClass { CAMetalLayer.self }
+    }
+
+    private func setColorSpace(_ view: Screen) {
+        let metalLayer = view.layer as! CAMetalLayer
+        // The guest's display profile is sRGB, and the presenter writes sRGB
+        // values. A nil colorspace skips matching on wide-gamut iPad screens.
+        metalLayer.colorspace = matchScreenColors ? Self.srgb : nil
     }
 
     func makeUIView(context: Context) -> Screen {
@@ -69,9 +81,10 @@ private struct GPUScreen: UIViewRepresentable {
         view.isOpaque = false
         view.layer.contentsGravity = .resizeAspect
         view.layer.isOpaque = false
+        setColorSpace(view)
         henge_vm_set_display_layer(Unmanaged.passUnretained(view.layer).toOpaque())
         return view
     }
 
-    func updateUIView(_ view: Screen, context: Context) {}
+    func updateUIView(_ view: Screen, context: Context) { setColorSpace(view) }
 }
