@@ -54,24 +54,11 @@ struct MacSettingsView: View {
                 if Device.isPad {
                     DeskHeading("Screen")
                     VStack(alignment: .leading, spacing: 12) {
-                        Picker("Screen", selection: Binding(get: {
-                            if mac.screen.width == Device.performanceScreen.width,
-                               mac.screen.height == Device.performanceScreen.height { return "performance" }
-                            if mac.screen.width == 1920, mac.screen.height == 1080 { return "wide" }
-                            return "fit"
-                        }, set: { choice in
-                            switch choice {
-                            case "performance": (mac.screenWidth, mac.screenHeight) = Device.performanceScreen
-                            case "wide": (mac.screenWidth, mac.screenHeight) = (1920, 1080)
-                            default: (mac.screenWidth, mac.screenHeight) = Device.fittingScreen
-                            }
-                            save()
-                        })) {
-                            Text("Performance").tag("performance")
-                            Text("Fit this iPad").tag("fit")
-                            Text("16:9").tag("wide")
+                        HStack(spacing: 8) {
+                            screenButton("Performance", size: Device.performanceScreen)
+                            screenButton("Fit this iPad", size: Device.fittingScreen)
+                            screenButton("16:9", size: (1920, 1080))
                         }
-                        .pickerStyle(.segmented)
                         Text("\(mac.screen.width) × \(mac.screen.height). Performance renders about 30% fewer pixels. Changes apply the next time this Mac starts.")
                             .font(.system(size: 13)).foregroundStyle(Desk.dim)
                     }
@@ -147,6 +134,22 @@ struct MacSettingsView: View {
     }
 
     private var divider: some View { Rectangle().fill(Desk.hairline).frame(height: 0.5) }
+
+    private func screenButton(_ title: String, size: (width: Int, height: Int)) -> some View {
+        let selected = mac.screen.width == size.width && mac.screen.height == size.height
+        return Button {
+            (mac.screenWidth, mac.screenHeight) = size
+            save()
+        } label: {
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(selected ? Desk.text : Desk.dim)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 9)
+                .background(selected ? Desk.accent : Desk.raised, in: RoundedRectangle(cornerRadius: 9))
+        }
+        .buttonStyle(.plain)
+    }
 
     private func row(_ title: String, symbol: String?, tint: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
