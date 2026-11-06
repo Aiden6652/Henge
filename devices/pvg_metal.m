@@ -89,9 +89,9 @@ enum { OBJ_BUFFER = 1, OBJ_TEXTURE = 2, OBJ_FUNCTION = 6, OBJ_SERIALIZED = 7, OB
     /* Multi-plane surfaces cannot sit on a buffer: a real IOSurface, kept up to date from the guest's pages. */
     IOSurfaceRef iosurface;
     uint64_t alloc, content_hash;
-    /* When the host cannot lay it out as the guest did: where each plane is on both sides. */
-    uint32_t relaid;
-    uint64_t plane_from[4], plane_to[4], plane_bytes[4], plane_row[4], plane_h[4];
+    /* Source layout for a multi-plane video surface. */
+    uint32_t plane_count;
+    uint64_t plane_from[4], plane_row[4], plane_h[4];
     /* A heap: private memory, a buffer over all of it. */
     id<MTLBuffer> heap_whole;
     /* A heap's or a private texture's copy in guest memory, and which side has the newest bytes. */
@@ -587,17 +587,27 @@ static IOSurfaceRef make_iosurface(HvObject *to, const uint8_t *desc, uint64_t a
         [plain addObject:@{(__bridge id)kIOSurfacePlaneWidth: @(w), (__bridge id)kIOSurfacePlaneHeight: @(h), (__bridge id)kIOSurfacePlaneBytesPerRow: @(row),
                            (__bridge id)kIOSurfacePlaneOffset: @(at), (__bridge id)kIOSurfacePlaneSize: @(row * h), (__bridge id)kIOSurfacePlaneBytesPerElement: @(bpe),
                            (__bridge id)kIOSurfacePlaneElementWidth: @1, (__bridge id)kIOSurfacePlaneElementHeight: @1}];
-        to->plane_from[i] = off, to->plane_to[i] = at, to->plane_row[i] = row, to->plane_h[i] = h, to->plane_bytes[i] = row * h;
+        to->plane_from[i] = off, to->plane_row[i] = row, to->plane_h[i] = h;
         at += row * h;
     }
     NSDictionary *props = @{(__bridge id)kIOSurfaceWidth: @(width), (__bridge id)kIOSurfaceHeight: @(height), (__bridge id)kIOSurfacePixelFormat: @(fourcc),
                             (__bridge id)kIOSurfaceAllocSize: @(alloc), (__bridge id)kIOSurfacePlaneInfo: info};
     IOSurfaceRef made = IOSurfaceCreate((__bridge CFDictionaryRef)props);
-    if (made) return made;
-    /* Video formats refuse a layout with the guest's padding: planes end to end, copied across one by one. */
-    NSDictionary *plain_props = @{(__bridge id)kIOSurfaceWidth: @(width), (__bridge id)kIOSurfaceHeight: @(height), (__bridge id)kIOSurfacePixelFormat: @(fourcc), (__bridge id)kIOSurfacePlaneInfo: plain};
-    made = IOSurfaceCreate((__bridge CFDictionaryRef)plain_props);
-    if (made) to->relaid = planes;
+    if (!made) {
+        /* Video formats can refuse the guest's padding: request packed planes instead. */
+        NSDictionary *plain_props = @{(__bridge id)kIOSurfaceWidth: @(width), (__bridge id)kIOSurfaceHeight: @(height), (__bridge id)kIOSurfacePixelFormat: @(fourcc), (__bridge id)kIOSurfacePlaneInfo: plain};
+        made = IOSurfaceCreate((__bridge CFDictionaryRef)plain_props);
+    }
+    if (made) {
+        to->plane_count = planes;
+        static int logged;
+        if (planes >= 2 && logged++ < 4)
+            for (uint32_t i = 0; i < planes && i < IOSurfaceGetPlaneCount(made) && i < 4; i++)
+                fprintf(stderr, "hengevm: video plane %u guest off %llu row %llu h %llu; host off %zu row %zu h %zu\n",
+                        i, (unsigned long long)to->plane_from[i], (unsigned long long)to->plane_row[i],
+                        (unsigned long long)to->plane_h[i], IOSurfaceGetOffsetOfPlane(made, i),
+                        IOSurfaceGetBytesPerRowOfPlane(made, i), IOSurfaceGetHeightOfPlane(made, i));
+    }
     return made;
 }
 
@@ -614,18 +624,27 @@ static void sync_iosurface(HvObject *s) {
     if (hash == s->content_hash) return;
     s->content_hash = hash;
     IOSurfaceLock(s->iosurface, 0, NULL);
-    uint8_t *base = IOSurfaceGetBaseAddress(s->iosurface);
-    if (s->relaid) {
-        for (uint32_t i = 0; i < s->relaid && i < 4; i++)
-            if (s->plane_from[i] + s->plane_bytes[i] <= s->alloc && s->plane_to[i] + s->plane_bytes[i] <= IOSurfaceGetAllocSize(s->iosurface))
-                memcpy(base + s->plane_to[i], from + s->plane_from[i], s->plane_bytes[i]);
+    if (s->plane_count && IOSurfaceGetPlaneCount(s->iosurface) >= s->plane_count) {
+        /* IOSurface can choose different offsets and row strides from those
+           requested. Copy each video plane through its actual host layout. */
+        for (uint32_t i = 0; i < s->plane_count && i < 4; i++) {
+            uint8_t *dst = IOSurfaceGetBaseAddressOfPlane(s->iosurface, i);
+            size_t dst_row = IOSurfaceGetBytesPerRowOfPlane(s->iosurface, i);
+            size_t rows = MIN((size_t)s->plane_h[i], IOSurfaceGetHeightOfPlane(s->iosurface, i));
+            uint64_t src_row = s->plane_row[i], src_off = s->plane_from[i];
+            if (!dst || !src_row || src_off > s->alloc || rows > (s->alloc - src_off) / src_row) continue;
+            size_t bytes = MIN((size_t)src_row, dst_row);
+            for (size_t y = 0; y < rows; y++)
+                memcpy(dst + y * dst_row, from + src_off + y * src_row, bytes);
+        }
     } else {
+        uint8_t *base = IOSurfaceGetBaseAddress(s->iosurface);
         memcpy(base, from, MIN(s->alloc, IOSurfaceGetAllocSize(s->iosurface)));
     }
     IOSurfaceUnlock(s->iosurface, 0, NULL);
     const char *dump = getenv("HV_PVG_SURFACE_DUMP");
     static int dumped;
-    if (dump && s->relaid && dumped < 6) {
+    if (dump && s->plane_count && dumped < 6) {
         char path[1100];
         snprintf(path, sizeof path, "%s-%d.bin", dump, dumped++);
         FILE *f = fopen(path, "wb");
