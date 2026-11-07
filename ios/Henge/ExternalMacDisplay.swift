@@ -23,8 +23,8 @@ struct ExternalMacDisplay: View {
 }
 
 /// Puts the session's Mac on an external display. iOS 27 delivers that scene only to this
-/// accessory; earlier iOS offers it to the app delegate (LegacyExternalDisplay), which is told
-/// about the session either way and acts only where iOS offers it scenes.
+/// accessory; earlier iOS connects it to ExternalDisplaySceneDelegate (LegacyExternalDisplay),
+/// which is told about the session either way and acts only where iOS gives it scenes.
 struct ExternalMacDisplayModifier: ViewModifier {
     let presentation: MacPresentation
 
