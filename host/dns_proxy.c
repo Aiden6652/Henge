@@ -43,6 +43,7 @@ typedef struct {
     char name[1025];
     Answer ans[MAX_ANSWERS];
     int nans, nodata, failed, done;
+    int account; /* an Apple Account / activation / certificate name: never let it trip GIVE_UP */
 } Query;
 
 static atomic_int inflight, unanswered_in_a_row;
@@ -53,6 +54,29 @@ static int64_t now_ms(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (int64_t)ts.tv_sec * 1000 + ts.tv_nsec / 1000000;
+}
+
+/* Signing in to an Apple Account resolves a burst of names -- gsa.apple.com,
+   setup.icloud.com, p*-appleid.apple.com, ocsp/ocsp2.apple.com, time.apple.com
+   and the akamai/cdn hosts behind them. Several of those are answered late or
+   not at all by a system resolver, and 8 unanswered lookups in a row used to
+   switch DNS back to libslirp *for the whole session* (issue #34's GIVE_UP).
+   On IPv6-only networks libslirp has no working name server, so every later
+   Apple lookup would fail and sign-in reported a verification/connection error.
+   Keep those names on the system resolver and out of the failure streak. */
+static int is_apple_account_name(const char *name) {
+    static const char *const suffixes[] = {
+        ".apple.com.", ".icloud.com.", ".apple-cloudkit.com.", ".mzstatic.com.",
+        ".akamaiedge.net.", ".akamai.net.", ".aaplimg.com.", ".edgesuite.net.",
+    };
+    size_t n = strlen(name);
+    for (size_t i = 0; i < sizeof suffixes / sizeof *suffixes; i++) {
+        size_t l = strlen(suffixes[i]);
+        if (n >= l && !strcasecmp(name + n - l, suffixes[i])) return 1;
+    }
+    /* Bare zone names (apple.com., icloud.com.) and the push/activation hosts. */
+    if (!strcasecmp(name, "apple.com.") || !strcasecmp(name, "icloud.com.")) return 1;
+    return 0;
 }
 
 static uint16_t rd16(const uint8_t *p) { return (uint16_t)(p[0] << 8 | p[1]); }
@@ -212,7 +236,10 @@ static void *lookup(void *arg) {
         DNSServiceRefDeallocate(ref);
         if (!q->done || q->failed) {
             atomic_fetch_add(&timed_out, 1);
-            if (atomic_fetch_add(&unanswered_in_a_row, 1) + 1 == GIVE_UP && hv_knob[HV_K_DNSPROXY]) {
+            /* An Apple Account name timing out is expected during sign-in; do
+               not let it add to the streak that disables the resolver, and do
+               not reset the streak either, so genuine failures still count. */
+            if (!q->account && atomic_fetch_add(&unanswered_in_a_row, 1) + 1 == GIVE_UP && hv_knob[HV_K_DNSPROXY]) {
                 hv_knob[HV_K_DNSPROXY] = 0; /* not hv_knob_set: no translation depends on it */
                 fprintf(stderr, "hengevm: dns: %d lookups in a row unanswered by the system resolver: libslirp answers from now on\n", GIVE_UP);
             }
@@ -256,6 +283,7 @@ int hv_dns_proxy_take(const uint8_t *p, uint32_t len, HvDnsSend send) {
         free(q);
         return 0;
     }
+    q->account = is_apple_account_name(q->name);
     q->qtype = rd16(dns + off), q->qclass = rd16(dns + off + 2);
     uint32_t qend = off + 4;
     q->udp_max = 512;
