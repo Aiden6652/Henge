@@ -80,7 +80,15 @@ struct KeyboardCatcher: UIViewRepresentable {
         }
     }
 
-    final class CatcherView: KeyListener, UIKeyInput {
+    /// Holds the on-screen keyboard.
+    ///
+    /// UIKeyInput is enough for a US keyboard, but a Chinese (or any IME) keyboard never
+    /// becomes active on a responder that implements only UIKeyInput: the system needs
+    /// UITextInput's marked-text handling for pinyin, candidates and handwriting. That is
+    /// why Chinese could not be typed at all here. The view keeps no document of its own --
+    /// committed text is sent straight to the Mac -- but it does keep the text the IME is
+    /// composing so the keyboard can work with it.
+    final class CatcherView: KeyListener, UITextInput {
         var onHide: () -> Void = {}
         private lazy var row: UIHostingController<ModifierRow> = {
             let host = UIHostingController(rootView: ModifierRow(hide: { [weak self] in self?.onHide() }))
@@ -98,16 +106,126 @@ struct KeyboardCatcher: UIViewRepresentable {
         var spellCheckingType: UITextSpellCheckingType = .no
         var smartQuotesType: UITextSmartQuotesType = .no
         var smartDashesType: UITextSmartDashesType = .no
+        weak var inputDelegate: UITextInputDelegate?
+
+        // MARK: - The text the IME is composing
+
+        private var marked = ""
+        private lazy var tokenizerObject = UITextInputStringTokenizer(textInput: self)
+        var tokenizer: UITextInputTokenizer { tokenizerObject }
+
+        private final class Position: UITextPosition {
+            let offset: Int
+            init(_ offset: Int) { self.offset = offset }
+        }
+
+        private final class Range: UITextRange {
+            let from: Int, to: Int
+            init(_ from: Int, _ to: Int) { self.from = from; self.to = to }
+            override var start: UITextPosition { Position(from) }
+            override var end: UITextPosition { Position(to) }
+            override var isEmpty: Bool { from == to }
+        }
+
+        private func offset(_ p: UITextPosition) -> Int { (p as? Position)?.offset ?? 0 }
+
+        var beginningOfDocument: UITextPosition { Position(0) }
+        var endOfDocument: UITextPosition { Position(marked.count) }
+        var selectedTextRange: UITextRange? {
+            get { Range(marked.count, marked.count) }
+            set { }
+        }
+        var markedTextRange: UITextRange? { marked.isEmpty ? nil : Range(0, marked.count) }
+        var markedTextStyle: [NSAttributedString.Key: Any]? {
+            get { nil }
+            set { }
+        }
+
+        func text(in range: UITextRange) -> String? {
+            guard let r = range as? Range, r.from >= 0, r.from <= r.to, r.to <= marked.count else { return nil }
+            return (marked as NSString).substring(with: NSRange(location: r.from, length: r.to - r.from))
+        }
+
+        func replace(_ range: UITextRange, withText text: String) {
+            marked = ""
+            send(text)
+        }
+
+        func setMarkedText(_ markedText: String?, selectedRange: NSRange) {
+            marked = markedText ?? ""
+        }
+
+        func unmarkText() { marked = "" }
+
+        func textRange(from fromPosition: UITextPosition, to toPosition: UITextPosition) -> UITextRange? {
+            Range(offset(fromPosition), offset(toPosition))
+        }
+
+        func position(from position: UITextPosition, offset: Int) -> UITextPosition? {
+            let p = self.offset(position) + offset
+            return p >= 0 && p <= marked.count ? Position(p) : nil
+        }
+
+        func position(from position: UITextPosition, in direction: UITextLayoutDirection, offset: Int) -> UITextPosition? {
+            let step = direction == .left || direction == .up ? -offset : offset
+            return self.position(from: position, offset: step)
+        }
+
+        func compare(_ position: UITextPosition, to other: UITextPosition) -> ComparisonResult {
+            let a = offset(position), b = offset(other)
+            return a < b ? .orderedAscending : a > b ? .orderedDescending : .orderedSame
+        }
+
+        func offset(from: UITextPosition, to toPosition: UITextPosition) -> Int {
+            offset(toPosition) - offset(from)
+        }
+
+        func position(within range: UITextRange, farthestIn direction: UITextLayoutDirection) -> UITextPosition? {
+            guard let r = range as? Range else { return nil }
+            return Position(direction == .left || direction == .up ? r.from : r.to)
+        }
+
+        func characterRange(byExtending position: UITextPosition, in direction: UITextLayoutDirection) -> UITextRange? {
+            let p = offset(position)
+            return direction == .left || direction == .up ? Range(0, p) : Range(p, marked.count)
+        }
+
+        func baseWritingDirection(for position: UITextPosition, in direction: UITextStorageDirection) -> NSWritingDirection { .natural }
+        func setBaseWritingDirection(_ writingDirection: NSWritingDirection, for range: UITextRange) { }
+        func firstRect(for range: UITextRange) -> CGRect { .zero }
+        func caretRect(for position: UITextPosition) -> CGRect { .zero }
+        func selectionRects(for range: UITextRange) -> [UITextSelectionRect] { [] }
+        func closestPosition(to point: CGPoint) -> UITextPosition? { endOfDocument }
+        func closestPosition(to point: CGPoint, within range: UITextRange) -> UITextPosition? { endOfDocument }
+        func characterRange(at point: CGPoint) -> UITextRange? { Range(marked.count, marked.count) }
+        func shouldChangeText(in range: UITextRange, replacementText text: String) -> Bool { true }
+
+        // MARK: - UIKeyInput
 
         func insertText(_ text: String) {
-            guard !HardwareKeys.keyJustPressed else { return }
-            for c in text { Keys.type(c) }
-            StickyKeys.shared.releaseAll()
+            marked = ""
+            send(text)
         }
 
         func deleteBackward() {
             guard !HardwareKeys.keyJustPressed else { return }
+            // While composing, the backspace belongs to the IME, not to the Mac.
+            if !marked.isEmpty { marked.removeLast(); return }
             Keys.press(Keys.backspace)
+            StickyKeys.shared.releaseAll()
+        }
+
+        /// ASCII goes to the guest as key codes, as before. Anything else (Chinese, emoji,
+        /// accented letters) has no key code at all: Keys.type used to drop it silently, so
+        /// it goes through the shared clipboard and is pasted with Command-V instead.
+        private func send(_ text: String) {
+            guard !HardwareKeys.keyJustPressed, !text.isEmpty else { return }
+            if text.unicodeScalars.allSatisfy({ $0.value < 128 }) {
+                for c in text { Keys.type(c) }
+            } else {
+                let batch = text
+                Task { @MainActor in UnicodeTyper.shared.send(batch) }
+            }
             StickyKeys.shared.releaseAll()
         }
     }
@@ -268,5 +386,29 @@ private struct HeldKey: View {
                     }
             )
             .accessibilityLabel(label)
+    }
+}
+
+/// Text with no key code cannot be typed into the Mac one key at a time. Henge's shared
+/// clipboard carries any Unicode: put the text there, let the helper inside macOS copy it
+/// onto the Mac's clipboard, then press Command-V. Submissions that arrive close together
+/// are batched, so a whole phrase is pasted at once instead of one character per second.
+@MainActor
+final class UnicodeTyper {
+    static let shared = UnicodeTyper()
+    private var pending = ""
+    private var flush: Task<Void, Never>?
+    private init() { }
+
+    func send(_ text: String) {
+        pending += text
+        flush?.cancel()
+        flush = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000) // let the IME finish one submission
+            guard !Task.isCancelled, !self.pending.isEmpty else { return }
+            let batch = self.pending
+            self.pending = ""
+            await Sharing.deliver(batch)
+        }
     }
 }
