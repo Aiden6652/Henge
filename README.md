@@ -52,7 +52,7 @@ Then a Henge folder in the Mac's home folder is the same folder as Files › Hen
 
 ## Known limits
 
-- Signing in to an Apple Account inside macOS fails with a verification error.
+- Signing in to an Apple Account inside macOS still usually fails with a verification error. Each Mac now gets its own well-formed, stable serial number and MAC (derived from its ECID) instead of every Henge Mac reporting QEMU's placeholder `1234`, and Apple Account hostnames are kept on the system resolver during sign-in. But Apple's servers ask for a Secure Enclave–signed device identity (`VZMacIdentityPayload`), which an emulated machine has no way to produce; even Apple's own virtual Macs only gained Apple Account sign-in with macOS Sequoia 15.1 and Virtualization.framework. Do not copy a real Mac's serial number into a virtual one: that is identity cloning and can lock the Apple Account.
 - Graphics are tested on macOS's own apps, Chrome, Firefox, VS Code and Discord. Other apps may draw wrongly.
 - For the first few minutes after you log in, macOS is busy starting up in the background, so apps open more slowly.
 - Only one Mac can start per launch. Quit Henge and open it again to start another, and to start one again after restarting or shutting down macOS.
