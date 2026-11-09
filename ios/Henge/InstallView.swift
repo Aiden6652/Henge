@@ -6,7 +6,9 @@ struct InstallView: View {
     @ObservedObject private var jit = JITCoordinator.shared
     @State private var jitReady = JITBootstrap.ready
     @StateObject private var display = DisplayRouter()
-    @State private var release = MacOSRelease.all.first(where: Installer.haveImage) ?? MacOSRelease.all[0]
+    @State private var release = MacOSRelease.all.first(where: Installer.haveImage)
+        ?? MacOSRelease.all.first(where: { $0.id == MacOSRelease.recommendedID })
+        ?? MacOSRelease.all[0]
     @State private var name = "Mac"
     @State private var ramGB = Device.suggestedRAMGB
     @State private var deleteAfter = false
@@ -144,7 +146,9 @@ struct InstallView: View {
                 } else {
                     Text("\(ByteText.string(UInt64(r.bytes))) download").font(.system(size: 13)).foregroundStyle(Desk.dim)
                 }
-                Text(r.note).font(.system(size: 13)).foregroundStyle(Desk.dim)
+                // A String is shown verbatim by SwiftUI; wrapping it as LocalizedStringKey
+                // lets the release notes take part in the zh-Hans localization.
+                Text(LocalizedStringKey(r.note)).font(.system(size: 13)).foregroundStyle(Desk.dim)
             }
             Spacer()
             if release == r { Image(systemName: "checkmark").font(.system(size: 15, weight: .bold)).foregroundStyle(Desk.accentLight) }
@@ -156,7 +160,9 @@ struct InstallView: View {
 
     // MARK: Going
 
-    private static let stages = ["Download", "Start installer", "Write macOS", "Check macOS", "Finish"]
+    /// LocalizedStringKey, not String: a String would be shown verbatim by SwiftUI and
+    /// could not be translated by Localizable.strings.
+    private static let stages: [LocalizedStringKey] = ["Download", "Start installer", "Write macOS", "Check macOS", "Finish"]
 
     private var stage: Int {
         switch installer.phase {
