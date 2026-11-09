@@ -4,6 +4,42 @@ This fork collects the fixes from the community forks of [Leviidev/Henge](https:
 into one build, with a few additions, aimed above all at iPad (tested hardware: iPad Pro M4).
 Every change keeps its original author in the git history.
 
+## Unreleased — older macOS, Chinese input, Simplified Chinese UI
+
+### Older macOS (for 8 GB iPads)
+- The install list is no longer a hard-coded limit. `MacOSRelease.builtIn` now offers
+  **macOS Ventura 13.0 (22A380)** and **macOS Sonoma 14.6.1 (23G93)** alongside
+  Sequoia, Tahoe and 27, with their real Apple CDN URLs and sizes. Ventura is a 12 GB
+  download (Sequoia is 16 GB), and every release has its own `reserveGB`, so the free
+  space check asks for 16/18 GB instead of a flat 24 GB.
+- Sonoma 14.6.1 is the image `BootROM.swift` already takes AVPBooter from, so ROM and
+  restore OS match. Ventura 13 is older than that ROM and is entirely untested.
+- Any further build can be offered without a rebuild: put `Restore images/custom.json`
+  in Henge's Documents folder. See `docs/custom-restore-images.json.example`.
+- **Apple still decides whether an old build installs.** The restore is personalized by
+  Apple's signing server for the Mac's ECID; Henge cannot bypass that. If a build is no
+  longer signed, the restore stops near the end. `host/install.c` has no version check.
+
+### Chinese input
+- `CatcherView` now implements `UITextInput` instead of `UIKeyInput`: a UIKeyInput-only
+  responder never activates IME keyboards, which is why only English worked. Marked
+  text (pinyin composition, candidates, handwriting) is handled too.
+- Non-ASCII text no longer disappears. `Keys.type` only maps ASCII to Linux key codes;
+  Chinese now goes through the shared clipboard (`Sharing.deliver`) and is pasted with
+  Command-V. `UnicodeTyper` batches submissions that arrive close together.
+- Without the `henge-agent` helper there is no clipboard in the guest: Unicode text is
+  kept on the device clipboard and logged instead of silently dropped. ASCII typing,
+  hardware keys and sticky modifiers are unchanged.
+
+### Simplified Chinese UI
+- `ios/Localization/zh-Hans.lproj/Localizable.strings` with 208 keys, plus
+  `CFBundleLocalizations` in Info.plist and a post-build step in project.yml that copies
+  the `.lproj` into the bundle. SwiftUI literals are LocalizedStringKeys, so the Swift
+  sources did not need rewriting; missing keys fall back to English.
+- `ios/Localization/extract_ui_keys.py` re-extracts the keys from the Swift sources.
+- Release notes, install-step labels and the version-row note now use LocalizedStringKey.
+  Dynamically built strings (error messages, step names, log lines) are still English.
+
 ## 0.2.0 (100)
 
 Based on upstream `main` at b744a78.
