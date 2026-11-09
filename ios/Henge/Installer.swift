@@ -31,14 +31,16 @@ struct MacOSRelease: Identifiable, Hashable {
         // A 12 GB download and a 16 GB reserve, instead of Sequoia's 16 GB + 24 GB.
         MacOSRelease(id: "22A380", name: "macOS Ventura 13.0",
                      url: URL(string: "https://updates.cdn-apple.com/2022FallFCS/fullrestores/012-92188/2C38BCD1-2BFF-4A10-B358-94E8E28BE805/UniversalMac_13.0_22A380_Restore.ipsw")!,
-                     bytes: 12_197_669_257, reserveGB: 16,
-                     note: "Smallest download, lightest on an 8 GB iPad. Not tested with Henge; Apple must still sign this build to finish the restore."),
+                     bytes: 12_197_669_257,
+                     note: "Smallest download, lightest on an 8 GB iPad. Not tested with Henge; Apple must still sign this build to finish the restore.",
+                     reserveGB: 16),
         // macOS 14 Sonoma: the very image BootROM.swift takes AVPBooter from, so the ROM
         // and the restore OS come from the same release.
         MacOSRelease(id: "23G93", name: "macOS Sonoma 14.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2024SummerFCS/fullrestores/062-52859/932E0A8F-6644-4759-82DA-F8FA8DEA806A/UniversalMac_14.6.1_23G93_Restore.ipsw")!,
-                     bytes: 14_790_601_661, reserveGB: 18,
-                     note: "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Not tested with Henge."),
+                     bytes: 14_790_601_661,
+                     note: "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Not tested with Henge.",
+                     reserveGB: 18),
         MacOSRelease(id: "24G90", name: "macOS Sequoia 15.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2025SummerFCS/fullrestores/093-10809/CFD6DD38-DAF0-40DA-854F-31AAD1294C6F/UniversalMac_15.6.1_24G90_Restore.ipsw")!,
                      bytes: 16_035 << 20, note: "Recommended: the version Henge is tested with."),
