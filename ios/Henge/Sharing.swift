@@ -39,17 +39,31 @@ enum Sharing {
         }
     }
 
+    /// Put text on the Mac's clipboard and paste it at the cursor. This is the only channel
+    /// into the guest that carries arbitrary Unicode: key codes cover ASCII only, so Chinese
+    /// input goes through here instead of Keys.type (which used to drop it silently).
+    /// Without the helper there is no clipboard in macOS to write to. ASCII can still be
+    /// typed one key at a time; anything else is kept on the device's clipboard, and the
+    /// reason is written to the log rather than lost.
+    @MainActor
+    static func deliver(_ text: String) async {
+        guard helperRunning else {
+            if text.unicodeScalars.allSatisfy({ $0.value < 128 }) {
+                await Keys.typeSlowly(text)
+            } else {
+                UIPasteboard.general.string = text
+                HengeLog.log("input", "Text with no key code (Chinese) needs the Mac helper: Details > Type the Set Up Command. Kept on the device clipboard.")
+            }
+            return
+        }
+        henge_share_set_clipboard(text)
+        try? await Task.sleep(nanoseconds: 800_000_000) // for the helper to put it on the Mac's clipboard
+        Keys.chord(Keys.command, "v")
+    }
+
     /// Text from this device, pasted at the Mac's cursor. Without the helper it is typed, as far as the keyboard can.
     static func paste(_ text: String) {
-        Task { @MainActor in
-            if helperRunning {
-                henge_share_set_clipboard(text)
-                try? await Task.sleep(nanoseconds: 800_000_000) // for the helper to put it on the Mac's clipboard
-                Keys.chord(Keys.command, "v")
-            } else {
-                await Keys.typeSlowly(text)
-            }
-        }
+        Task { @MainActor in await deliver(text) }
     }
 
     /// Types the set up command at the Mac's cursor, and stops there: the person using the Mac presses Return.
