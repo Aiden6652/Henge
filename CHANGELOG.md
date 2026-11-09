@@ -40,6 +40,26 @@ Every change keeps its original author in the git history.
 - Release notes, install-step labels and the version-row note now use LocalizedStringKey.
   Dynamically built strings (error messages, step names, log lines) are still English.
 
+### Machine identity and Apple Account sign-in
+- Every Mac used to report QEMU's placeholder serial `1234` and the same fixed MAC, so
+  Apple's account servers saw the whole Henge user base as one invalid machine (upstream
+  issue #37). `hv_cfg_identity()` now derives a 10-character Apple-style serial and four
+  distinct locally-administered MACs from the ECID. The ECID is stored in `machine.json`
+  and is the same during restore and every boot, so the identity is unique per Mac and
+  never changes. `host/vm.c` and `host/hvf_ref.c` pass the same en0 MAC to the config
+  region and the NIC, so macOS sees one consistent machine. The engine logs the identity.
+- `HV_CFG_SERIAL` is a test hook for the config region; it is not a way to clone a real
+  Mac's identity, which can lock an Apple Account.
+- `host/dns_proxy.c`: Apple Account/activation/certificate hostnames (`*.apple.com`,
+  `*.icloud.com`, the akamai/mzstatic CDNs) no longer add to the streak that switches
+  DNS back to libslirp for the whole session. Sign-in resolves a burst of those names,
+  and on IPv6-only networks libslirp has no working resolver, so a few late answers used
+  to make every later lookup fail with a verification/connection error (issue #34).
+- **This does not make Apple Account sign-in work.** Apple's servers ask for a Secure
+  Enclave–signed device identity (`VZMacIdentityPayload`), which emulation cannot
+  produce; even Apple's own virtual Macs only gained sign-in in macOS Sequoia 15.1.
+  The README known limit is updated to say what is and is not possible.
+
 ## 0.2.0 (100)
 
 Based on upstream `main` at b744a78.
