@@ -1,6 +1,7 @@
 #include "cfg.h"
 
 #include <stddef.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -82,7 +83,67 @@ static void put_str(char *dst, const char *src) {
     dst[31] = 0;
 }
 
+/* Apple serials are ten alphanumerics, with 0/O/1/I left out so they cannot be
+   misread. 32 characters: five bits per character, straight from the mixed ECID. */
+static const char serial_chars[] = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+static uint64_t cfg_mix(uint64_t x) {
+    x += 0x9e3779b97f4a7c15ull;
+    x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9ull;
+    x = (x ^ (x >> 27)) * 0x94d049bb133111ebull;
+    return x ^ (x >> 31);
+}
+
+static int mac_is_zero(const uint8_t m[6]) {
+    return !(m[0] || m[1] || m[2] || m[3] || m[4] || m[5]);
+}
+
+/* Every Henge Mac used to report QEMU's placeholder serial "1234" and the same
+   fixed MAC, so Apple's account servers saw all of them as one invalid machine
+   and refused to verify a sign-in (README known limit, upstream issue #37).
+   The ECID is already random per Mac and stored in machine.json, and both the
+   restore and every boot pass the same one, so deriving the identity from it
+   makes each Mac distinct and keeps it unchanged for the life of the disk.
+   This is a well-formed *synthetic* identity, not a serial Apple registered. */
+void hv_cfg_identity(uint64_t ecid, char serial[32], uint8_t macs[4][6]) {
+    if (serial) {
+        uint64_t v = cfg_mix(ecid ^ 0x48454e4745ull /* "HENGE" */);
+        for (int i = 0; i < 10; i++) {
+            v = cfg_mix(v);
+            serial[i] = serial_chars[v & 31];
+        }
+        serial[10] = 0;
+        const char *override = getenv("HV_CFG_SERIAL"); /* test hook only; do not copy a real Mac's serial */
+        if (override && *override) snprintf(serial, 32, "%s", override);
+    }
+    if (macs) {
+        for (int k = 0; k < 4; k++) {
+            uint64_t v = cfg_mix(ecid ^ (0x9e3779b97f4a7c15ull * (uint64_t)(k + 1)));
+            uint8_t *m = macs[k];
+            m[0] = 0x02; /* locally administered unicast: never collides with a real Apple OUI */
+            for (int i = 1; i < 6; i++) m[i] = (uint8_t)(v >> (8 * i));
+        }
+    }
+}
+
 uint8_t *hv_cfg_create(HvMachine *m, uint64_t pa, const HvCfgParams *p) {
+    /* Fill in whatever the caller left unset, so the identity is never QEMU's
+       placeholder "1234" and never a MAC shared by every Henge Mac. Derived
+       from the ECID, it is the same during the restore and every later boot. */
+    char derived_serial[32];
+    uint8_t derived_macs[4][6];
+    hv_cfg_identity(p->ecid, derived_serial, derived_macs);
+    HvCfgParams q = *p;
+    if (!q.serial) q.serial = derived_serial;
+    if (mac_is_zero(q.mac_en0)) memcpy(q.mac_en0, derived_macs[0], 6);
+    if (mac_is_zero(q.mac_en1)) memcpy(q.mac_en1, derived_macs[1], 6);
+    if (mac_is_zero(q.mac_wifi0)) memcpy(q.mac_wifi0, derived_macs[2], 6);
+    if (mac_is_zero(q.mac_bt0)) memcpy(q.mac_bt0, derived_macs[3], 6);
+    p = &q;
+    fprintf(stderr, "hengevm: machine identity serial=%s en0=%02x:%02x:%02x:%02x:%02x:%02x ecid=0x%llx\n",
+            q.serial, q.mac_en0[0], q.mac_en0[1], q.mac_en0[2], q.mac_en0[3], q.mac_en0[4], q.mac_en0[5],
+            (unsigned long long)q.ecid);
+
     rng_state = p->seed;
     uint8_t *mem = aligned_alloc(16384, CFG_WINDOW);
     memset(mem, 0, CFG_WINDOW);
@@ -106,7 +167,7 @@ uint8_t *hv_cfg_create(HvMachine *m, uint64_t pa, const HvCfgParams *p) {
     memcpy(c->mac_wifi0, p->mac_wifi0, 6);
     memcpy(c->mac_bt0, p->mac_bt0, 6);
     for (uint32_t i = 0; i < c->nr_cpus && i < 0x80; i++) c->cpu_ids[i] = i;
-    put_str(c->serial, p->serial ? p->serial : "1234");
+    put_str(c->serial, q.serial); /* never QEMU's "1234": see hv_cfg_identity */
     put_str(c->unk8, "D/A");
     put_str(c->model, p->model ? p->model : "VM0001");
     c->unk10 = 1;
