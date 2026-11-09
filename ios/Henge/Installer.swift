@@ -8,10 +8,37 @@ struct MacOSRelease: Identifiable, Hashable {
     let url: URL
     let bytes: Int64
     let note: String
+    /// Free storage Henge asks for on top of the download, for the Mac's own disk.
+    /// Older macOS writes less, so it needs a smaller reserve than Sequoia's 24 GB.
+    let reserveGB: Int
 
-    /// The builds offered, newest last. Apple's catalog (mesu.apple.com) only lists the newest;
-    /// these are the same images from Apple's CDN, and Apple still signs them for virtual Macs.
-    static let all: [MacOSRelease] = [
+    init(id: String, name: String, url: URL, bytes: Int64, note: String, reserveGB: Int = 24) {
+        self.id = id
+        self.name = name
+        self.url = url
+        self.bytes = bytes
+        self.note = note
+        self.reserveGB = reserveGB
+    }
+
+    /// The builds Henge knows about, oldest first. Apple's catalog (mesu.apple.com) only lists
+    /// the newest; these are the same images from Apple's CDN. Whether an *older* build can
+    /// finish installing is decided by Apple's signing server when it personalizes the restore
+    /// for the Mac's ECID -- that is outside Henge. The list itself is no longer a hard limit:
+    /// see `customOnce` below, which adds images without a rebuild.
+    static let builtIn: [MacOSRelease] = [
+        // macOS 13 Ventura: the smallest restore image Apple published for VirtualMac2,1.
+        // A 12 GB download and a 16 GB reserve, instead of Sequoia's 16 GB + 24 GB.
+        MacOSRelease(id: "22A380", name: "macOS Ventura 13.0",
+                     url: URL(string: "https://updates.cdn-apple.com/2022FallFCS/fullrestores/012-92188/2C38BCD1-2BFF-4A10-B358-94E8E28BE805/UniversalMac_13.0_22A380_Restore.ipsw")!,
+                     bytes: 12_197_669_257, reserveGB: 16,
+                     note: "Smallest download, lightest on an 8 GB iPad. Not tested with Henge; Apple must still sign this build to finish the restore."),
+        // macOS 14 Sonoma: the very image BootROM.swift takes AVPBooter from, so the ROM
+        // and the restore OS come from the same release.
+        MacOSRelease(id: "23G93", name: "macOS Sonoma 14.6.1",
+                     url: URL(string: "https://updates.cdn-apple.com/2024SummerFCS/fullrestores/062-52859/932E0A8F-6644-4759-82DA-F8FA8DEA806A/UniversalMac_14.6.1_23G93_Restore.ipsw")!,
+                     bytes: 14_790_601_661, reserveGB: 18,
+                     note: "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Not tested with Henge."),
         MacOSRelease(id: "24G90", name: "macOS Sequoia 15.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2025SummerFCS/fullrestores/093-10809/CFD6DD38-DAF0-40DA-854F-31AAD1294C6F/UniversalMac_15.6.1_24G90_Restore.ipsw")!,
                      bytes: 16_035 << 20, note: "Recommended: the version Henge is tested with."),
@@ -22,6 +49,32 @@ struct MacOSRelease: Identifiable, Hashable {
                      url: URL(string: "https://updates.cdn-apple.com/2026FallFCS/c9671975-52db-4fb5-9af2-00217169ba8d/UniversalMac_27.2_26B123_Restore.ipsw")!,
                      bytes: 24_409 << 20, note: "The newest. Not tested with Henge yet."),
     ]
+
+    /// The build offered by default (the one Henge is tested with), not simply the first row.
+    static let recommendedID = "24G90"
+
+    /// Extra restore images, read once at launch from Documents/Restore images/custom.json.
+    /// Drop a file there through the Files app to offer any build without rebuilding Henge:
+    /// [{"id":"23G93","name":"...","url":"https://...","bytes":14790601661,
+    ///   "note":"...","reserveGB":18}]
+    /// `id` is also the filename the download is saved under, so use a build number.
+    private static let customOnce: [MacOSRelease] = {
+        let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Restore images", isDirectory: true)
+            .appendingPathComponent("custom.json")
+        guard let data = try? Data(contentsOf: url),
+              let list = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return list.compactMap { d in
+            guard let id = d["id"] as? String, let name = d["name"] as? String,
+                  let link = d["url"] as? String, let u = URL(string: link),
+                  let size = (d["bytes"] as? NSNumber)?.int64Value, size > 0 else { return nil }
+            return MacOSRelease(id: id, name: name, url: u, bytes: size,
+                                note: d["note"] as? String ?? "Custom restore image.",
+                                reserveGB: (d["reserveGB"] as? NSNumber)?.intValue ?? 24)
+        }
+    }()
+
+    static var all: [MacOSRelease] { builtIn + customOnce }
 }
 
 /// Downloads a restore image and installs it on a new virtual Mac, on the
@@ -77,8 +130,8 @@ final class Installer: NSObject, ObservableObject {
     static func deleteImage(_ r: MacOSRelease) { try? FileManager.default.removeItem(at: imagePath(r)) }
 
     /// Free space an install takes: the new Mac's disk, and the download if it is not here yet.
-    static func spaceNeeded(_ r: MacOSRelease) -> Int64 { (haveImage(r) ? 0 : r.bytes) + newMacBytes }
-    private static let newMacBytes: Int64 = 24 << 30
+    /// Older systems write less to their disk, so their reserve is smaller (see MacOSRelease.reserveGB).
+    static func spaceNeeded(_ r: MacOSRelease) -> Int64 { (haveImage(r) ? 0 : r.bytes) + (Int64(r.reserveGB) << 30) }
 
     func reset() { if !busy { phase = .idle } }
 
