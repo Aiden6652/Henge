@@ -242,15 +242,24 @@ int hv_vm_create(const HvVmConfig *c, char *err, size_t errlen) {
     if (getenv("HV_SLOW_MEM")) m.slow_mem = 1; /* debugging: every load and store through the helper */
     ncpus = c->ncpus < 1 ? 1 : c->ncpus > HV_MAX_CPUS ? HV_MAX_CPUS : c->ncpus;
     m.big_lock_on = ncpus > 1 && getenv("HV_BIG_LOCK"); /* debugging: one CPU in guest code at a time */
-    HvCfgParams cfg = {.nr_cpus = (uint32_t)ncpus, .ecid = c->ecid, .seed = c->seed, .mac_en0 = {0x02, 0x48, 0x56, 0x4d, 0x00, 0x01}};
+    /* One identity for the whole machine: the config region and the NIC must
+       agree on en0's MAC, or macOS sees two different machines. Derived from
+       the ECID, so it is stable across boots and unique per Mac. */
+    char serial[32];
+    uint8_t macs[4][6];
+    hv_cfg_identity(c->ecid, serial, macs);
+    HvCfgParams cfg = {.nr_cpus = (uint32_t)ncpus, .ecid = c->ecid, .seed = c->seed, .serial = serial};
+    memcpy(cfg.mac_en0, macs[0], 6);
+    memcpy(cfg.mac_en1, macs[1], 6);
+    memcpy(cfg.mac_wifi0, macs[2], 6);
+    memcpy(cfg.mac_bt0, macs[3], 6);
     if (c->installer) cfg.run_installer1 = cfg.run_installer2 = 1;
     if (getenv("HV_RUN_INSTALLER")) { /* experiment: "a,b" for the two installer words */
         unsigned a = 0, b2 = 0;
         sscanf(getenv("HV_RUN_INSTALLER"), "%u,%u", &a, &b2);
         cfg.run_installer1 = a, cfg.run_installer2 = b2;
     }
-    static const uint8_t mac[6] = {0x02, 0x48, 0x56, 0x4d, 0x00, 0x01};
-    if (hv_vmapple_create(&board, &m, cpus, (c->ram_mb ? c->ram_mb : 2048) << 20, &disk, &aux, &cfg, mac) != 0)
+    if (hv_vmapple_create(&board, &m, cpus, (c->ram_mb ? c->ram_mb : 2048) << 20, &disk, &aux, &cfg, macs[0]) != 0)
         return fail(err, errlen, "Cannot build the machine (not enough memory for the guest's RAM?).");
     if (hv_vmapple_load_rom(&board, c->rom) != 0) return fail(err, errlen, "Cannot read the ROM (AVPBooter.vmapple2.bin).");
     hv_vmapple_reset_cpu(&board);
