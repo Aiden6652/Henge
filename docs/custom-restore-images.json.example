@@ -1,0 +1,10 @@
+[
+  {
+    "id": "23G93",
+    "name": "macOS Sonoma 14.6.1",
+    "url": "https://updates.cdn-apple.com/2024SummerFCS/fullrestores/062-52859/932E0A8F-6644-4759-82DA-F8FA8DEA806A/UniversalMac_14.6.1_23G93_Restore.ipsw",
+    "bytes": 14790601661,
+    "note": "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Not tested with Henge.",
+    "reserveGB": 18
+  }
+]
