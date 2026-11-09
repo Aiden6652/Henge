@@ -11,6 +11,10 @@
 # your certificate carries it, and Henge falls back to file-backed guest RAM
 # without it.
 
+
+# Fork build note: this fork adds macOS 13/14 restore choices, Chinese IME input
+# (UITextInput) and a zh-Hans localization bundle. Every branch push builds the IPA.
+
 name: Build Henge IPA
 
 on:
