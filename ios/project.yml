@@ -99,6 +99,17 @@ targets:
           ./tools/build_ios_restore.sh
         basedOnDependencyAnalysis: false
     postBuildScripts:
+      - name: Bundle Simplified Chinese strings
+        # SwiftUI text literals are LocalizedStringKeys, so Localizable.strings is enough
+        # to translate the UI without touching the Swift sources. Copy the .lproj folder
+        # into the built bundle explicitly, so its layout does not depend on how xcodegen
+        # groups the source tree.
+        script: |
+          set -e
+          DST="$TARGET_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/zh-Hans.lproj"
+          mkdir -p "$DST"
+          cp "$SRCROOT/Localization/zh-Hans.lproj/Localizable.strings" "$DST/Localizable.strings"
+        basedOnDependencyAnalysis: false
       - name: Bundle the Mac helper
         # What runs inside macOS for the clipboard and shared folder (tools/henge-agent.m).
         script: |
