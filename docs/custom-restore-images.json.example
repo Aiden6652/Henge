@@ -4,7 +4,7 @@
     "name": "macOS Sonoma 14.6.1",
     "url": "https://updates.cdn-apple.com/2024SummerFCS/fullrestores/062-52859/932E0A8F-6644-4759-82DA-F8FA8DEA806A/UniversalMac_14.6.1_23G93_Restore.ipsw",
     "bytes": 14790601661,
-    "note": "Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay.",
-    "reserveGB": 18
+    "note": "A smaller download than Sequoia, and it reaches an accelerated desktop. For now its login screen and menu bar draw green.",
+    "reserveGB": 26
   }
 ]

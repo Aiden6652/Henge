@@ -9,7 +9,7 @@ struct MacOSRelease: Identifiable, Hashable {
     let bytes: Int64
     let note: String
     /// Free storage Henge asks for on top of the download, for the Mac's own disk.
-    /// Older macOS writes less, so it needs a smaller reserve than Sequoia's 24 GB.
+    /// Measured after installing and setting each release up: Ventura 23 GB, Sonoma 26 GB.
     let reserveGB: Int
 
     init(id: String, name: String, url: URL, bytes: Int64, note: String, reserveGB: Int = 24) {
@@ -24,25 +24,25 @@ struct MacOSRelease: Identifiable, Hashable {
     /// The builds Henge offers, oldest first. Apple's catalog (mesu.apple.com) only lists the
     /// newest; these are the same images from Apple's CDN.
     ///
-    /// Ventura 13 and Sonoma 14 install and boot: their iBoot and kernel reach the progress
-    /// bar. But their ParavirtualizedGraphics guest driver speaks an older PVG command protocol
-    /// than the macOS 15+ driver Henge's Metal replay was decoded from. Once the window server
-    /// starts drawing, the replay gets render passes it cannot resolve, and Apple's GPU driver
-    /// aborts the app. `pvg_metal.m` now detects that, refuses to hand Metal an empty render
-    /// pass, and after a few of them stops replaying GPU commands for the session -- so these
-    /// builds boot without crashing, but stay on the boot framebuffer (no accelerated desktop).
-    /// Sequoia and later are the versions with working graphics; keep them as the default.
+    /// Ventura 13.6 and Sonoma 14.6.1 install, set up and reach an accelerated desktop:
+    /// their ParavirtualizedGraphics guest driver speaks an older PVG command protocol
+    /// (no object-list command, object list at task offset 0x4000, compact surface
+    /// descriptions, a 24-byte work command) which `pvg_metal.m` / `pvg_lite.c` decode
+    /// explicitly. Known cosmetic quirks: Sonoma's login screen, menu bar and a strip down
+    /// the left edge draw green; Ventura's Calendar icon in the Dock is missing its date.
+    /// Monterey 12 installs but its desktop never appears, so it is not offered.
+    /// Sequoia and later remain the default (the versions Henge is tested with most).
     static let builtIn: [MacOSRelease] = [
-        MacOSRelease(id: "22A380", name: "macOS Ventura 13.0",
-                     url: URL(string: "https://updates.cdn-apple.com/2022FallFCS/fullrestores/012-92188/2C38BCD1-2BFF-4A10-B358-94E8E28BE805/UniversalMac_13.0_22A380_Restore.ipsw")!,
-                     bytes: 12_197_669_257,
-                     note: "Smallest download, lightest on an 8 GB iPad. Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay. Apple must still sign this build to finish the restore.",
-                     reserveGB: 16),
+        MacOSRelease(id: "22G120", name: "macOS Ventura 13.6",
+                     url: URL(string: "https://updates.cdn-apple.com/2023FallFCS/fullrestores/042-55833/C0830847-A2F8-458F-B680-967991820931/UniversalMac_13.6_22G120_Restore.ipsw")!,
+                     bytes: 12_297 << 20,
+                     note: "The smallest download (about 35 GB in all), for devices short on storage. Installs and reaches an accelerated desktop; the Calendar icon in the Dock is missing its date.",
+                     reserveGB: 23),
         MacOSRelease(id: "23G93", name: "macOS Sonoma 14.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2024SummerFCS/fullrestores/062-52859/932E0A8F-6644-4759-82DA-F8FA8DEA806A/UniversalMac_14.6.1_23G93_Restore.ipsw")!,
-                     bytes: 14_790_601_661,
-                     note: "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay.",
-                     reserveGB: 18),
+                     bytes: 14_106 << 20,
+                     note: "A smaller download than Sequoia, and it reaches an accelerated desktop. For now its login screen and menu bar draw green.",
+                     reserveGB: 26),
         MacOSRelease(id: "24G90", name: "macOS Sequoia 15.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2025SummerFCS/fullrestores/093-10809/CFD6DD38-DAF0-40DA-854F-31AAD1294C6F/UniversalMac_15.6.1_24G90_Restore.ipsw")!,
                      bytes: 16_035 << 20, note: "Recommended: the version Henge is tested with."),
@@ -60,9 +60,10 @@ struct MacOSRelease: Identifiable, Hashable {
     /// Extra restore images, read once at launch from Documents/Restore images/custom.json.
     /// Drop a file there through the Files app to offer any build without rebuilding Henge:
     /// [{"id":"23G93","name":"...","url":"https://...","bytes":14790601661,
-    ///   "note":"...","reserveGB":18}]
+    ///   "note":"...","reserveGB":26}]
     /// `id` is also the filename the download is saved under, so use a build number.
-    /// Older macOS images added here boot but have no accelerated graphics (see `builtIn`).
+    /// Any 13.x/14.x image added here uses the older-driver PVG path (see `builtIn`);
+    /// Monterey 12 installs but its desktop never appears under Henge.
     private static let customOnce: [MacOSRelease] = {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Restore images", isDirectory: true)
@@ -135,7 +136,7 @@ final class Installer: NSObject, ObservableObject {
     static func deleteImage(_ r: MacOSRelease) { try? FileManager.default.removeItem(at: imagePath(r)) }
 
     /// Free space an install takes: the new Mac's disk, and the download if it is not here yet.
-    /// Older systems write less to their disk, so their reserve is smaller (see MacOSRelease.reserveGB).
+    /// Each release carries its own measured disk reserve (see MacOSRelease.reserveGB).
     static func spaceNeeded(_ r: MacOSRelease) -> Int64 { (haveImage(r) ? 0 : r.bytes) + (Int64(r.reserveGB) << 30) }
 
     func reset() { if !busy { phase = .idle } }

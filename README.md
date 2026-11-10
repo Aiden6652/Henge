@@ -42,7 +42,7 @@ Sideload `Henge.ipa` from [Releases](https://github.com/Leviidev/Henge/releases)
 - **Storage:** about 43 GB free for macOS Sequoia. That's 17 GB for the download, which you can delete afterwards, and 26 GB for the Mac.
 - **Memory:** a Mac gets 4, 6 or 8 GB. Sign Henge with the increased memory limit entitlement if your certificate has it.
 
-Then open the Install tab, pick macOS Sequoia 15.6.1, and keep Henge open with the device plugged in. Tahoe 26.6.2 and macOS 27.2 are offered too, but they aren't tested yet.
+Then open the Install tab, pick macOS Sequoia 15.6.1, and keep Henge open with the device plugged in. Tahoe 26.6.2 and macOS 27.2 are offered too, but they aren't tested yet. **macOS Sonoma 14.6.1 and Ventura 13.6** are smaller downloads (14.1 and 12.3 GB) for devices short on storage; both install, set up and reach an accelerated desktop.
 
 ## Sharing with the Mac
 
@@ -54,7 +54,7 @@ Then a Henge folder in the Mac's home folder is the same folder as Files › Hen
 
 - Signing in to an Apple Account inside macOS still usually fails with a verification error. Each Mac now gets its own well-formed, stable serial number and MAC (derived from its ECID) instead of every Henge Mac reporting QEMU's placeholder `1234`, and Apple Account hostnames are kept on the system resolver during sign-in. But Apple's servers ask for a Secure Enclave–signed device identity, which Henge cannot produce: it emulates the CPU and devices with its own JIT, with no Secure Enclave passthrough. (Apple's own Virtualization.framework VMs only gained Apple Account sign-in on macOS Sequoia 15.1 by forwarding a host-signed identity.) Do not copy a real Mac's serial number into a virtual one: that is identity cloning and can lock the Apple Account.
 - Graphics are tested on macOS's own apps, Chrome, Firefox, VS Code and Discord. Other apps may draw wrongly.
-- macOS Ventura 13 and Sonoma 14 are offered as lighter builds for 8 GB iPads, but their guest GPU driver speaks a different graphics protocol than the one Henge's Metal replay decodes. They install and boot to the progress bar, then run without accelerated graphics (the display stays on the boot framebuffer) instead of crashing. macOS Sequoia 15 and later are the builds with a working GPU desktop. See `CHANGELOG.md` and `docs/custom-restore-images.json.example`.
+- On macOS Sonoma, the login screen after a start, the menu bar and a strip down the left edge draw green, and switching to a dynamic wallpaper (such as Sonoma) can stop the screen updating. On Ventura, the Calendar icon in the Dock is missing its date. Monterey 12 installs but its desktop never appears, so it is not offered. Both 13.6 and 14.6.1 need ~26/23 GB for the Mac itself once installed and set up, measured on the device.
 - For the first few minutes after you log in, macOS is busy starting up in the background, so apps open more slowly.
 - Only one Mac can start per launch. Quit Henge and open it again to start another, and to start one again after restarting or shutting down macOS.
 - iPadOS keeps some keyboard shortcuts for itself, such as Command-Tab.

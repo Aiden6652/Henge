@@ -207,8 +207,6 @@
 "Recommended: the version Henge is tested with." = "推荐：Henge 已测试过的版本。";
 "Not tested with Henge yet." = "尚未在 Henge 上测试。";
 "The newest. Not tested with Henge yet." = "最新版本，尚未在 Henge 上测试。";
-"Smallest download, lightest on an 8 GB iPad. Not tested with Henge; Apple must still sign this build to finish the restore." = "下载体积最小，对 8 GB 内存的 iPad 负担最轻。尚未在 Henge 上测试；仍需 Apple 继续为该版本签名才能完成恢复安装。";
-"Smaller and lighter than Sequoia, and the boot ROM comes from this image. Not tested with Henge." = "比 Sequoia 更小更轻，启动 ROM 就取自这个镜像。尚未在 Henge 上测试。";
-"Smallest download, lightest on an 8 GB iPad. Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay. Apple must still sign this build to finish the restore." = "下载体积最小，对 8 GB 内存的 iPad 负担最轻。可以启动，但画面会停留在启动进度条：Henge 的 Metal 重放不支持该版本的 GPU 驱动。仍需 Apple 继续为该版本签名才能完成恢复安装。";
-"Smaller and lighter than Sequoia, and the boot ROM comes from this image. Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay." = "比 Sequoia 更小更轻，启动 ROM 就取自这个镜像。可以启动，但画面会停留在启动进度条：Henge 的 Metal 重放不支持该版本的 GPU 驱动。";
+"The smallest download (about 35 GB in all), for devices short on storage. Installs and reaches an accelerated desktop; the Calendar icon in the Dock is missing its date." = "下载体积最小（连系统盘共约 35 GB），适合存储空间紧张的设备。可安装并进入带图形加速的桌面；Dock 里的日历图标缺少日期。";
+"A smaller download than Sequoia, and it reaches an accelerated desktop. For now its login screen and menu bar draw green." = "比 Sequoia 下载体积更小，且能进入带图形加速的桌面。目前登录界面和菜单栏会显示为绿色。";
 "Custom restore image." = "自定义恢复镜像。";
