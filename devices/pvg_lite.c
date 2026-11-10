@@ -671,6 +671,25 @@ void hv_pvg_lite_poll(HvPvgLite *p) {
     }
 }
 
+/* +1034: the guest driver offers a PVG protocol version and the device answers.
+   Henge's Metal replay only decodes the newer guest driver's command format, so an
+   older macOS (13/14) can offer a version whose serialized commands we cannot read;
+   that ends in empty render-pass descriptors and an abort inside Apple's GPU driver.
+   Report the negotiation once, so a log makes the mismatch obvious, and let an
+   advanced user pin the answer with HV_PVG_PROTOCOL to try another driver path.
+   The default is unchanged (echo back what the driver offered). */
+static uint32_t pvg_protocol_answer(HvPvgLite *p, uint32_t offered) {
+    static int reported;
+    const char *pin = getenv("HV_PVG_PROTOCOL");
+    uint32_t answer = pin ? (uint32_t)strtoul(pin, NULL, 0) : offered;
+    if (!reported) {
+        reported = 1;
+        fprintf(stderr, "hengevm: pvg-lite: guest GPU protocol: driver offered %u, device answers %u%s\n",
+                offered, answer, pin ? " (pinned by HV_PVG_PROTOCOL)" : "");
+    }
+    return answer;
+}
+
 static uint64_t gfx_read(void *opaque, uint64_t off, unsigned size) {
     HvPvgLite *p = opaque;
     uint64_t v = 0;
@@ -683,6 +702,7 @@ static uint64_t gfx_read(void *opaque, uint64_t off, unsigned size) {
         v = __atomic_exchange_n(&p->status, 0, __ATOMIC_ACQ_REL);
         break;
     case 0x122c: v = 1; break;
+    case 0x1034: v = pvg_protocol_answer(p, p->regs[(0x1034 - 0x1000) / 4]); break;
     default:
         if (off >= 0x1000 && off < 0x2000) v = p->regs[(off - 0x1000) / 4];
         break;

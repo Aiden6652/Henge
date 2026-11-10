@@ -144,6 +144,12 @@ enum { OBJ_BUFFER = 1, OBJ_TEXTURE = 2, OBJ_FUNCTION = 6, OBJ_SERIALIZED = 7, OB
     BOOL tess_factors; /* so is a tessellation factor buffer */
     uint32_t pre_raster_samples, pre_imageblock, pre_threadgroup, pre_tile_w, pre_tile_h; /* for the next pass */
     BOOL tracing; /* HV_PVG_TRACE_FILE exists: say what each exec draws */
+    /* An older guest GPU driver (macOS 13/14) serializes its commands in a format this
+       replay cannot decode: every render pass resolves to an empty descriptor. Counting
+       those lets us stop building descriptors after a few, without ever handing Metal
+       an invalid one -- on Apple GPUs that aborts the whole app instead of failing. */
+    int bad_passes;
+    BOOL metal_incompatible;
     /* The newest frame, BGRA, for hv_pvg_metal_frame, and the same without the pointer on it. */
     uint8_t *frame, *base;
     uint32_t frame_w, frame_h;
@@ -184,6 +190,7 @@ enum { OBJ_BUFFER = 1, OBJ_TEXTURE = 2, OBJ_FUNCTION = 6, OBJ_SERIALIZED = 7, OB
     dispatch_source_t shot_timer;
 }
 - (void)complain:(NSString *)what;
+- (void)badPass:(NSString *)why;
 - (HvObject *)object:(uint32_t)ref task:(uint32_t)task;
 - (void)drawCursor;
 - (BOOL)hasDisplayLayer;
@@ -382,6 +389,23 @@ static MTLTextureDescriptor *descriptor_v2(const uint8_t *d) {
     if ([complaints containsObject:what]) return;
     [complaints addObject:what];
     fprintf(stderr, "hengevm: pvg-metal: %s\n", what.UTF8String);
+}
+
+/* macOS 13/14's ParavirtualizedGraphics guest driver serializes its commands for
+   a different PVG protocol than the macOS 15/26/27 driver this replay was decoded
+   from. Its render-pass records resolve to empty descriptors, and hand one of those
+   to Apple's Metal driver and AGXMetalG16G_B0 aborts the whole app (SIGABRT).
+   A few such passes in a row means this guest will never be replayable: set
+   metal_incompatible so exec: stops building descriptors and simply completes the
+   guest's stamps. The guest keeps booting; graphics stay on the boot framebuffer
+   (the progress bar) instead of crashing the app. This is a last resort -- a
+   single odd pass on a supported macOS just drops that pass and resets the count. */
+- (void)badPass:(NSString *)why {
+    [self complain:why];
+    if (++bad_passes >= 3 && !metal_incompatible) {
+        metal_incompatible = YES;
+        [self complain:@"guest GPU protocol is incompatible: GPU command streams will be completed without replay (graphics stay on the boot framebuffer)"];
+    }
 }
 
 /* A kernel that does nothing. Metal's deserializer aborts the whole app when a compute pipeline's function is nil, which
@@ -1125,6 +1149,7 @@ typedef struct {
 #define U64(off) ({ uint64_t _v; memcpy(&_v, r.p + (off), 8); _v; })
 
 - (id<MTLRenderCommandEncoder>)beginPass:(Rec)r task:(uint32_t)task commandBuffer:(id<MTLCommandBuffer>)cb {
+    if (metal_incompatible) return nil; /* stop building descriptors at all: see badPass */
     MTLRenderPassDescriptor *d = [MTLRenderPassDescriptor renderPassDescriptor];
 #define ATTACH(a, o)                                                 \
     do {                                                             \
@@ -1181,6 +1206,40 @@ typedef struct {
         HvObject *co = [self object:U32(0x4c) task:task];
         fprintf(stderr, "trace: pass c0 ref %u %lux%lu fmt %lu load %lu store %lu clear %.2f %.2f %.2f %.2f surface %s heap %d\n", U32(0x4c), (unsigned long)c0.width, (unsigned long)c0.height, (unsigned long)c0.pixelFormat, (unsigned long)d.colorAttachments[0].loadAction, (unsigned long)d.colorAttachments[0].storeAction, cc.red, cc.green, cc.blue, cc.alpha, co && co->surface ? "yes" : "no", c0.heap != nil);
     }
+    /* M4's Metal driver aborts the whole process (SIGABRT, _os_crash_fmt inside
+       AGXMetalG16G_B0) when it is handed a render pass with no usable attachment.
+       macOS 13/14 serialize MTLRenderPassDescriptor differently from the macOS
+       15+ guest driver this replay was decoded for: every attachment ref resolves
+       to no texture and the whole record reads as zeros ("no render encoder:
+       c0 ref 9 MISSING 0x0 fmt 0 load 0 store 0 usage 0"). Such a pass cannot be
+       encoded on the host at all. Skip it instead of letting Metal kill the app.
+       The command buffer still commits and gives its stamp back, so the guest
+       keeps booting; that frame simply does not draw. A ref that points at a
+       missing texture is the signature of the mismatch, so treat any of those as
+       an unresolved pass too. */
+    BOOL pass_ok = (d.renderTargetWidth && d.renderTargetHeight), unresolved = NO;
+    for (int i = 0; i < 8; i++) {
+        uint32_t o = 0x4c + (uint32_t)i * 0x3c;
+        if (o + 4 > r.size) break;
+        id<MTLTexture> t = d.colorAttachments[i].texture;
+        if (U32(o) && !t) unresolved = YES;
+        if (t && t.width && t.height) pass_ok = YES;
+    }
+    if (r.size >= 4) {
+        id<MTLTexture> dep = d.depthAttachment.texture;
+        if (U32(0) && !dep) unresolved = YES;
+        if (dep && dep.width && dep.height) pass_ok = YES;
+    }
+    if (r.size >= 0x2c) {
+        id<MTLTexture> ste = d.stencilAttachment.texture;
+        if (U32(0x28) && !ste) unresolved = YES;
+        if (ste && ste.width && ste.height) pass_ok = YES;
+    }
+    if (unresolved || !pass_ok) {
+        [self badPass:@"render pass skipped: guest driver attachments could not be resolved (older macOS GPU protocol)"];
+        return nil;
+    }
+    bad_passes = 0; /* a good pass: this guest speaks the protocol we understand */
     id<MTLRenderCommandEncoder> e = [cb renderCommandEncoderWithDescriptor:d];
     if (!e) {
         NSMutableString *m = [NSMutableString stringWithString:@"no render encoder:"];
@@ -1864,6 +1923,13 @@ typedef struct {
 
 /* Returns YES if the GPU's completion gives the stamp back. */
 - (BOOL)exec:(const uint32_t *)a length:(uint32_t)len channel:(uint32_t)ch stamp:(uint32_t)stamp {
+    /* A guest whose GPU protocol we cannot decode must never reach Metal again:
+       commit an empty command buffer so it still gets its completion stamp and
+       keeps booting, without touching a single encoder or descriptor. */
+    if (metal_incompatible) {
+        [self commit:[queue commandBuffer] channel:ch stamp:stamp complete:YES];
+        return YES;
+    }
     uint32_t task = a[0], nres = a[1], nbuf = a[2];
     if (12 + nres * 8ull + nbuf * 16ull > len) { /* never quietly: a lost job is a frame that never gets drawn */
         [self complain:[NSString stringWithFormat:@"exec of %u bytes dropped: task %u, %u resources, %u buffers", len, task, nres, nbuf]];

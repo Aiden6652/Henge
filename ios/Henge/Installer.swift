@@ -21,25 +21,27 @@ struct MacOSRelease: Identifiable, Hashable {
         self.reserveGB = reserveGB
     }
 
-    /// The builds Henge knows about, oldest first. Apple's catalog (mesu.apple.com) only lists
-    /// the newest; these are the same images from Apple's CDN. Whether an *older* build can
-    /// finish installing is decided by Apple's signing server when it personalizes the restore
-    /// for the Mac's ECID -- that is outside Henge. The list itself is no longer a hard limit:
-    /// see `customOnce` below, which adds images without a rebuild.
+    /// The builds Henge offers, oldest first. Apple's catalog (mesu.apple.com) only lists the
+    /// newest; these are the same images from Apple's CDN.
+    ///
+    /// Ventura 13 and Sonoma 14 install and boot: their iBoot and kernel reach the progress
+    /// bar. But their ParavirtualizedGraphics guest driver speaks an older PVG command protocol
+    /// than the macOS 15+ driver Henge's Metal replay was decoded from. Once the window server
+    /// starts drawing, the replay gets render passes it cannot resolve, and Apple's GPU driver
+    /// aborts the app. `pvg_metal.m` now detects that, refuses to hand Metal an empty render
+    /// pass, and after a few of them stops replaying GPU commands for the session -- so these
+    /// builds boot without crashing, but stay on the boot framebuffer (no accelerated desktop).
+    /// Sequoia and later are the versions with working graphics; keep them as the default.
     static let builtIn: [MacOSRelease] = [
-        // macOS 13 Ventura: the smallest restore image Apple published for VirtualMac2,1.
-        // A 12 GB download and a 16 GB reserve, instead of Sequoia's 16 GB + 24 GB.
         MacOSRelease(id: "22A380", name: "macOS Ventura 13.0",
                      url: URL(string: "https://updates.cdn-apple.com/2022FallFCS/fullrestores/012-92188/2C38BCD1-2BFF-4A10-B358-94E8E28BE805/UniversalMac_13.0_22A380_Restore.ipsw")!,
                      bytes: 12_197_669_257,
-                     note: "Smallest download, lightest on an 8 GB iPad. Not tested with Henge; Apple must still sign this build to finish the restore.",
+                     note: "Smallest download, lightest on an 8 GB iPad. Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay. Apple must still sign this build to finish the restore.",
                      reserveGB: 16),
-        // macOS 14 Sonoma: the very image BootROM.swift takes AVPBooter from, so the ROM
-        // and the restore OS come from the same release.
         MacOSRelease(id: "23G93", name: "macOS Sonoma 14.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2024SummerFCS/fullrestores/062-52859/932E0A8F-6644-4759-82DA-F8FA8DEA806A/UniversalMac_14.6.1_23G93_Restore.ipsw")!,
                      bytes: 14_790_601_661,
-                     note: "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Not tested with Henge.",
+                     note: "Smaller and lighter than Sequoia, and the boot ROM comes from this image. Boots, but graphics stay on the boot framebuffer: this version's GPU driver is not supported by Henge's Metal replay.",
                      reserveGB: 18),
         MacOSRelease(id: "24G90", name: "macOS Sequoia 15.6.1",
                      url: URL(string: "https://updates.cdn-apple.com/2025SummerFCS/fullrestores/093-10809/CFD6DD38-DAF0-40DA-854F-31AAD1294C6F/UniversalMac_15.6.1_24G90_Restore.ipsw")!,
@@ -60,6 +62,7 @@ struct MacOSRelease: Identifiable, Hashable {
     /// [{"id":"23G93","name":"...","url":"https://...","bytes":14790601661,
     ///   "note":"...","reserveGB":18}]
     /// `id` is also the filename the download is saved under, so use a build number.
+    /// Older macOS images added here boot but have no accelerated graphics (see `builtIn`).
     private static let customOnce: [MacOSRelease] = {
         let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Restore images", isDirectory: true)

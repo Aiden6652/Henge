@@ -12,8 +12,22 @@ Every change keeps its original author in the git history.
   Sequoia, Tahoe and 27, with their real Apple CDN URLs and sizes. Ventura is a 12 GB
   download (Sequoia is 16 GB), and every release has its own `reserveGB`, so the free
   space check asks for 16/18 GB instead of a flat 24 GB.
-- Sonoma 14.6.1 is the image `BootROM.swift` already takes AVPBooter from, so ROM and
-  restore OS match. Ventura 13 is older than that ROM and is entirely untested.
+- **Older builds boot, but their graphics do not.** Ventura 13 / Sonoma 14 install and
+  reach the kernel progress bar, then crashed the whole app once the window server began
+  drawing: their ParavirtualizedGraphics guest driver serializes a different PVG command
+  protocol than the macOS 15+ driver Henge's Metal replay was decoded from. The replay
+  read those commands as empty render-pass descriptors, and handing one to Apple's M4
+  GPU driver called `_os_crash_fmt` (SIGABRT) inside `AGXMetalG16G_B0` -- see the
+  `beginPass:task:commandBuffer:` frame in the crash log. `pvg_metal.m` now (1) refuses
+  to build a render encoder whose attachments did not resolve, (2) after three such
+  passes marks the session's GPU protocol incompatible and completes subsequent command
+  streams without touching Metal. These builds no longer crash; they stay on the boot
+  framebuffer instead of showing an accelerated desktop. Sequoia and later are unaffected
+  (a good pass resets the counter), and remain the default.
+- `pvg_lite.c` logs the `+1034` protocol-version negotiation once per boot, so a log makes
+  the mismatch visible. `HV_PVG_PROTOCOL=<n>` pins the version the device answers, for
+  experiments with driver compatibility. This is a diagnostic hook, not a fix: the older
+  guest driver's command format still has to be decoded to get graphics.
 - Any further build can be offered without a rebuild: put `Restore images/custom.json`
   in Henge's Documents folder. See `docs/custom-restore-images.json.example`.
 - **Apple still decides whether an old build installs.** The restore is personalized by
